@@ -1,21 +1,18 @@
 package com.nomina.config;
 
-import java.io.*;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
+import com.nomina.repository.DatabaseHelper;
+import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
 
 /**
  * Gestor de configuraciones y parámetros globales de la aplicación.
- * Persiste los datos en un archivo config.properties local.
+ * Persiste los datos en la base de datos SQLite en la tabla configuracion.
  * Implementa el patrón Observer para notificar cambios en tiempo de ejecución.
  */
 public final class ConfigManager {
 
-    private static final String FILE_NAME = "config.properties";
     private static final Properties properties = new Properties();
     private static final List<ConfigChangeListener> listeners = new ArrayList<>();
 
@@ -44,32 +41,50 @@ public final class ConfigManager {
     }
 
     /**
-     * Carga las propiedades del archivo local. Si no existe, lo crea con valores por defecto.
+     * Carga las propiedades de la base de datos SQLite. Si no existen registros, inicializa con valores por defecto.
      */
     public static void load() {
-        Path path = Paths.get(FILE_NAME);
-        if (!Files.exists(path)) {
-            resetToDefaults();
-            save();
-            return;
-        }
+        properties.clear();
+        String sql = "SELECT clave, valor FROM configuracion";
+        try (Connection conn = DatabaseHelper.getConnection();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(sql)) {
 
-        try (InputStream input = new FileInputStream(FILE_NAME)) {
-            properties.load(input);
-        } catch (IOException e) {
+            boolean hasValues = false;
+            while (rs.next()) {
+                properties.setProperty(rs.getString("clave"), rs.getString("valor"));
+                hasValues = true;
+            }
+
+            if (!hasValues) {
+                resetToDefaults();
+                save();
+            }
+        } catch (SQLException e) {
             System.err.println("Error al cargar la configuración: " + e.getMessage());
             resetToDefaults();
+            save();
         }
     }
 
     /**
-     * Guarda la configuración actual en el archivo config.properties.
+     * Guarda la configuración actual en la base de datos SQLite.
      */
     public static void save() {
-        try (OutputStream output = new FileOutputStream(FILE_NAME)) {
-            properties.store(output, "Configuracion de Nomina Inteligente - Parametros Globales");
+        String sql = "INSERT OR REPLACE INTO configuracion (clave, valor) VALUES (?, ?)";
+        try (Connection conn = DatabaseHelper.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+
+            conn.setAutoCommit(false);
+            for (String key : properties.stringPropertyNames()) {
+                pstmt.setString(1, key);
+                pstmt.setString(2, properties.getProperty(key));
+                pstmt.addBatch();
+            }
+            pstmt.executeBatch();
+            conn.commit();
             notifyListeners();
-        } catch (IOException e) {
+        } catch (SQLException e) {
             System.err.println("Error al guardar la configuración: " + e.getMessage());
         }
     }

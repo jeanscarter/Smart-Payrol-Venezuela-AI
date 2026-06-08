@@ -26,6 +26,7 @@ public class NominaPanel extends JPanel {
     private final JToggleButton btnVes;
     private final JToggleButton btnUsd;
     private final JLabel lblEstadoPeriodo;
+    private final JButton btnProcess;
 
     // KPI Card Labels
     private final JLabel lblKpiSueldosVal;
@@ -74,7 +75,7 @@ public class NominaPanel extends JPanel {
         btnExportPdf.addActionListener(e -> exportPdf());
         headerPanel.add(btnExportPdf);
 
-        JButton btnProcess = new JButton("\u2699  Procesar y Guardar Periodo");
+        btnProcess = new JButton("\u2699  Procesar y Guardar Periodo");
         btnProcess.putClientProperty(FlatClientProperties.STYLE, "arc: 8; font: $semibold; background: $Button.default.background; foreground: #ffffff");
         btnProcess.addActionListener(e -> procesarYGuardarPeriodo());
         headerPanel.add(btnProcess);
@@ -82,15 +83,22 @@ public class NominaPanel extends JPanel {
         add(headerPanel, "growx");
 
         // --- CONTROLS BAR (Period & Currency Selector) ---
-        JPanel controlsBar = new JPanel(new MigLayout("insets 12, gap 16", "[]12[]push[]12[]", "[]"));
+        JPanel controlsBar = new JPanel(new MigLayout("insets 12, gap 16", "[]12[]12[]push[]12[]", "[]"));
         controlsBar.putClientProperty(FlatClientProperties.STYLE, "arc: 12; background: $control");
 
         // Period Selector
         controlsBar.add(new JLabel("Periodo Activo:"));
-        cmbPeriodo = new JComboBox<>(obtenerPeriodosDisponibles());
+        cmbPeriodo = new JComboBox<>(new DefaultComboBoxModel<>());
+        inicializarComboPeriodos();
         cmbPeriodo.putClientProperty(FlatClientProperties.STYLE, "arc: 8");
         cmbPeriodo.addActionListener(e -> recalculate());
         controlsBar.add(cmbPeriodo, "width 280!");
+
+        // Botón Nuevo Período
+        JButton btnNuevoPeriodo = new JButton("➕ Nuevo Período");
+        btnNuevoPeriodo.putClientProperty(FlatClientProperties.STYLE, "arc: 8; font: $semibold");
+        btnNuevoPeriodo.addActionListener(e -> abrirDialogoNuevoPeriodo());
+        controlsBar.add(btnNuevoPeriodo);
 
         // Estado del Periodo
         lblEstadoPeriodo = new JLabel("BORRADOR");
@@ -332,12 +340,10 @@ public class NominaPanel extends JPanel {
                 .filter(e -> "Activo".equalsIgnoreCase(e.getEstado()))
                 .toList();
 
-        // Verificar si este periodo ya tiene datos persistidos en el histórico
         List<ReciboNomina> historicos = NominaRepository.obtenerPorPeriodo(item.id);
         if (!historicos.isEmpty()) {
             recibosCalculados = historicos;
         } else {
-            // Si no está procesado, calcular dinámicamente en memoria
             recibosCalculados = PayrollService.calcularPeriodo(item.id, empleadosActivos, tasa);
         }
 
@@ -357,9 +363,11 @@ public class NominaPanel extends JPanel {
         if (yaProcesado) {
             lblEstadoPeriodo.setText("✓ PROCESADA (Guardada)");
             lblEstadoPeriodo.putClientProperty(FlatClientProperties.STYLE, "font: bold -1; foreground: $Button.default.background");
+            btnProcess.setEnabled(false);
         } else {
             lblEstadoPeriodo.setText("⚠ BORRADOR (Sin procesar)");
             lblEstadoPeriodo.putClientProperty(FlatClientProperties.STYLE, "font: bold -1; foreground: #e67e22");
+            btnProcess.setEnabled(true);
         }
         lblEstadoPeriodo.repaint();
     }
@@ -446,7 +454,7 @@ public class NominaPanel extends JPanel {
 
         JOptionPane.showMessageDialog(this,
                 "Nómina procesada con éxito y archivada en el histórico local.",
-                "Nómina Presada", JOptionPane.INFORMATION_MESSAGE);
+                "Nómina Procesada", JOptionPane.INFORMATION_MESSAGE);
     }
 
     private void exportPdf() {
@@ -478,14 +486,124 @@ public class NominaPanel extends JPanel {
         }
     }
 
-    private PeriodoComboItem[] obtenerPeriodosDisponibles() {
-        return new PeriodoComboItem[]{
-                new PeriodoComboItem("2026-06-Q1", "Junio 2026 — Primera Quincena"),
-                new PeriodoComboItem("2026-06-Q2", "Junio 2026 — Segunda Quincena"),
-                new PeriodoComboItem("2026-06-M", "Junio 2026 — Mensual Completo"),
-                new PeriodoComboItem("2026-07-Q1", "Julio 2026 — Primera Quincena"),
-                new PeriodoComboItem("2026-07-Q2", "Julio 2026 — Segunda Quincena"),
-                new PeriodoComboItem("2026-07-M", "Julio 2026 — Mensual Completo")
+    private void inicializarComboPeriodos() {
+        DefaultComboBoxModel<PeriodoComboItem> model = (DefaultComboBoxModel<PeriodoComboItem>) cmbPeriodo.getModel();
+        model.removeAllElements();
+
+        List<String> periodosProcesados = NominaRepository.obtenerPeriodosProcesados();
+        if (periodosProcesados.isEmpty()) {
+            model.addElement(crearItemDesdeId("2026-06-Q1"));
+            model.addElement(crearItemDesdeId("2026-06-Q2"));
+            model.addElement(crearItemDesdeId("2026-06-M"));
+        } else {
+            for (String pid : periodosProcesados) {
+                model.addElement(crearItemDesdeId(pid));
+            }
+        }
+    }
+
+    private void abrirDialogoNuevoPeriodo() {
+        JDialog dialog = new JDialog((Frame) SwingUtilities.getWindowAncestor(this), "Nuevo Período", true);
+        dialog.setLayout(new MigLayout("wrap 2, insets 16, gapy 12", "[right][grow, fill]"));
+
+        dialog.add(new JLabel("Año:"));
+        JSpinner spinnerAnio = new JSpinner(new SpinnerNumberModel(2026, 2000, 2100, 1));
+        JSpinner.NumberEditor editor = new JSpinner.NumberEditor(spinnerAnio, "#");
+        spinnerAnio.setEditor(editor);
+        dialog.add(spinnerAnio);
+
+        dialog.add(new JLabel("Mes:"));
+        String[] meses = {"Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"};
+        JComboBox<String> cmbMes = new JComboBox<>(meses);
+        cmbMes.setSelectedIndex(5); // Junio por defecto
+        dialog.add(cmbMes);
+
+        dialog.add(new JLabel("Tipo:"));
+        String[] tipos = {"Primera Quincena", "Segunda Quincena", "Mensual Completo"};
+        JComboBox<String> cmbTipo = new JComboBox<>(tipos);
+        dialog.add(cmbTipo);
+
+        JButton btnCancelar = new JButton("Cancelar");
+        btnCancelar.addActionListener(e -> dialog.dispose());
+
+        JButton btnAceptar = new JButton("Crear");
+        btnAceptar.addActionListener(e -> {
+            int anio = (int) spinnerAnio.getValue();
+            int mesIdx = cmbMes.getSelectedIndex() + 1;
+            String mesStr = String.format("%02d", mesIdx);
+            String tipoCode = switch (cmbTipo.getSelectedIndex()) {
+                case 0 -> "Q1";
+                case 1 -> "Q2";
+                default -> "M";
+            };
+
+            String nuevoId = anio + "-" + mesStr + "-" + tipoCode;
+
+            DefaultComboBoxModel<PeriodoComboItem> model = (DefaultComboBoxModel<PeriodoComboItem>) cmbPeriodo.getModel();
+            boolean existe = false;
+            for (int i = 0; i < model.getSize(); i++) {
+                if (model.getElementAt(i).id.equals(nuevoId)) {
+                    cmbPeriodo.setSelectedIndex(i);
+                    existe = true;
+                    break;
+                }
+            }
+
+            if (!existe) {
+                PeriodoComboItem nuevoItem = crearItemDesdeId(nuevoId);
+                model.addElement(nuevoItem);
+                cmbPeriodo.setSelectedItem(nuevoItem);
+            }
+
+            dialog.dispose();
+            recalculate();
+        });
+
+        dialog.add(btnCancelar, "split 2, right");
+        dialog.add(btnAceptar, "right");
+
+        dialog.pack();
+        dialog.setLocationRelativeTo(this);
+        dialog.setVisible(true);
+    }
+
+    private static PeriodoComboItem crearItemDesdeId(String id) {
+        try {
+            String[] parts = id.split("-");
+            if (parts.length < 3) return new PeriodoComboItem(id, id);
+            String anio = parts[0];
+            String mesNum = parts[1];
+            String tipo = parts[2];
+
+            String mesStr = getNombreMes(mesNum);
+            String tipoStr = switch (tipo) {
+                case "Q1" -> "Primera Quincena";
+                case "Q2" -> "Segunda Quincena";
+                case "M" -> "Mensual Completo";
+                default -> tipo;
+            };
+
+            return new PeriodoComboItem(id, mesStr + " " + anio + " — " + tipoStr);
+        } catch (Exception e) {
+            return new PeriodoComboItem(id, id);
+        }
+    }
+
+    private static String getNombreMes(String mesNum) {
+        return switch (mesNum) {
+            case "01" -> "Enero";
+            case "02" -> "Febrero";
+            case "03" -> "Marzo";
+            case "04" -> "Abril";
+            case "05" -> "Mayo";
+            case "06" -> "Junio";
+            case "07" -> "Julio";
+            case "08" -> "Agosto";
+            case "09" -> "Septiembre";
+            case "10" -> "Octubre";
+            case "11" -> "Noviembre";
+            case "12" -> "Diciembre";
+            default -> mesNum;
         };
     }
 

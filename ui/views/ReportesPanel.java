@@ -135,6 +135,7 @@ public class ReportesPanel extends JPanel {
     private void exportarFaov() {
         List<String> periodos = NominaRepository.obtenerPeriodosProcesados();
         List<String> meses = periodos.stream()
+                .filter(p -> p.length() >= 7)
                 .map(p -> p.substring(0, 7))
                 .distinct()
                 .sorted()
@@ -320,6 +321,7 @@ public class ReportesPanel extends JPanel {
     private void exportarPensiones() {
         List<String> periodos = NominaRepository.obtenerPeriodosProcesados();
         List<String> meses = periodos.stream()
+                .filter(p -> p.length() >= 7)
                 .map(p -> p.substring(0, 7))
                 .distinct()
                 .sorted()

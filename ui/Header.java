@@ -2,6 +2,7 @@ package com.nomina.ui;
 
 import com.formdev.flatlaf.FlatClientProperties;
 import com.nomina.theme.ThemeManager;
+import com.nomina.service.BcvApiService;
 import net.miginfocom.swing.MigLayout;
 
 import javax.swing.*;
@@ -10,14 +11,12 @@ import javax.swing.*;
  * Header superior del dashboard principal.
  * <p>
  * Layout horizontal:
- * <pre>
  * ┌──────────────────────────────────────────────────────────┐
- * │  📍 Breadcrumb               Tasa BCV: Bs. XX.XX  ☀/🌙 │
+ * │  📍 Breadcrumb        Tasa BCV: Bs. XX.XX  🔄  ☀/🌙     │
  * └──────────────────────────────────────────────────────────┘
- * </pre>
  * <ul>
  *   <li>Breadcrumb dinámico sincronizado con ViewManager</li>
- *   <li>Indicador de Tasa BCV (placeholder para Fase 3)</li>
+ *   <li>Indicador de Tasa BCV actualizable automáticamente</li>
  *   <li>Toggle de tema Light/Dark</li>
  * </ul>
  */
@@ -26,6 +25,7 @@ public class Header extends JPanel {
     private final JLabel breadcrumbLabel;
     private final JLabel tasaBcvLabel;
     private final JButton themeToggle;
+    private final JButton syncBcvButton;
 
     // ── Mapa humano de claves de vista ──
     private static String getViewDisplayName(String key) {
@@ -42,7 +42,7 @@ public class Header extends JPanel {
 
     public Header() {
         setLayout(new MigLayout(
-                "insets 12 24 12 24", "[]push[]16[]", "[center]"));
+                "insets 12 24 12 24", "[]push[]4[]16[]", "[center]"));
         putClientProperty(FlatClientProperties.STYLE,
                 "background: $control");
 
@@ -55,11 +55,54 @@ public class Header extends JPanel {
         tasaBcvLabel = new JLabel(buildTasaText(com.nomina.config.ConfigManager.getTasaBcv()));
         tasaBcvLabel.putClientProperty(FlatClientProperties.STYLE,
                 "foreground: $Button.default.background; font: bold -1");
-        tasaBcvLabel.setToolTipText("Tasa oficial BCV — actualizable en Configuración");
+        tasaBcvLabel.setToolTipText("Tasa oficial BCV — actualizable automáticamente");
 
         // Registrar listener para actualización en caliente
         com.nomina.config.ConfigManager.addListener(() -> {
             tasaBcvLabel.setText(buildTasaText(com.nomina.config.ConfigManager.getTasaBcv()));
+        });
+
+        // ── Botón Sincronizar BCV ──
+        syncBcvButton = new JButton("🔄");
+        syncBcvButton.putClientProperty(FlatClientProperties.BUTTON_TYPE,
+                FlatClientProperties.BUTTON_TYPE_TOOLBAR_BUTTON);
+        syncBcvButton.putClientProperty(FlatClientProperties.STYLE,
+                "arc: 10; font: -1");
+        syncBcvButton.setToolTipText("Sincronizar Tasa BCV automáticamente");
+        syncBcvButton.setFocusable(false);
+        syncBcvButton.addActionListener(e -> {
+            syncBcvButton.setEnabled(false);
+            syncBcvButton.setText("⏳");
+
+            SwingWorker<Double, Void> worker = new SwingWorker<>() {
+                @Override
+                protected Double doInBackground() throws Exception {
+                    return BcvApiService.fetchTasaBcv();
+                }
+
+                @Override
+                protected void done() {
+                    try {
+                        double newTasa = get();
+                        com.nomina.config.ConfigManager.setTasaBcv(newTasa);
+                        com.nomina.config.ConfigManager.save();
+                        JOptionPane.showMessageDialog(Header.this,
+                                "Tasa BCV sincronizada con éxito: Bs. " + String.format("%,.4f", newTasa),
+                                "Sincronización Exitosa",
+                                JOptionPane.INFORMATION_MESSAGE);
+                    } catch (Exception ex) {
+                        Throwable cause = ex.getCause() != null ? ex.getCause() : ex;
+                        JOptionPane.showMessageDialog(Header.this,
+                                "Error al sincronizar la tasa BCV:\n" + cause.getMessage(),
+                                "Error de Sincronización",
+                                JOptionPane.ERROR_MESSAGE);
+                    } finally {
+                        syncBcvButton.setEnabled(true);
+                        syncBcvButton.setText("🔄");
+                    }
+                }
+            };
+            worker.execute();
         });
 
         // ── Theme Toggle ──
@@ -83,6 +126,7 @@ public class Header extends JPanel {
 
         add(breadcrumbLabel);
         add(tasaBcvLabel);
+        add(syncBcvButton);
         add(themeToggle);
     }
 

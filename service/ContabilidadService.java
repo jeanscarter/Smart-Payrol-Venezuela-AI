@@ -232,6 +232,7 @@ public final class ContabilidadService {
         List<ReciboNomina> recibosTrimestre = todosLosRecibos.stream()
                 .filter(r -> {
                     String pId = r.getPeriodoId();
+                    if (pId == null || pId.length() < 7) return false;
                     if (!pId.startsWith(prefijoTrim)) return false;
                     String mesPart = pId.substring(5, 7);
                     return meses.contains(mesPart);

@@ -1,22 +1,16 @@
 package com.nomina.repository;
 
 import com.nomina.model.ReciboNomina;
-
-import java.io.*;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
+import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Collectors;
 
 /**
  * Repositorio para la gestión y persistencia histórica de las nóminas procesadas.
- * Guarda los datos en nominas_procesadas.csv.
+ * Guarda los datos en la base de datos SQLite.
  */
 public final class NominaRepository {
 
-    private static final String FILE_NAME = "nominas_procesadas.csv";
     private static final List<ReciboNomina> historico = new ArrayList<>();
     private static final List<NominaChangeListener> listeners = new ArrayList<>();
 
@@ -33,43 +27,82 @@ public final class NominaRepository {
     }
 
     /**
-     * Carga el historial de nóminas desde el archivo CSV.
+     * Carga el historial de nóminas desde la base de datos SQLite.
      */
     public static void load() {
         historico.clear();
-        Path path = Paths.get(FILE_NAME);
-        if (!Files.exists(path)) {
-            return;
-        }
+        String sql = "SELECT * FROM nominas";
+        try (Connection conn = DatabaseHelper.getConnection();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(sql)) {
 
-        try (BufferedReader br = new BufferedReader(new FileReader(FILE_NAME))) {
-            String line = br.readLine(); // Saltar header
-            while ((line = br.readLine()) != null) {
-                if (line.trim().isEmpty()) continue;
-                ReciboNomina recibo = parseCsvLine(line);
-                if (recibo != null) {
-                    historico.add(recibo);
-                }
+            while (rs.next()) {
+                ReciboNomina recibo = new ReciboNomina(
+                        rs.getString("periodoId"),
+                        rs.getString("cedula"),
+                        rs.getString("nombreCompleto"),
+                        rs.getDouble("salarioMensualUsd"),
+                        rs.getDouble("tasaBcv"),
+                        rs.getDouble("sueldoBasePeriodoUsd"),
+                        rs.getDouble("sueldoBasePeriodoVes"),
+                        rs.getDouble("cestaTicketVes"),
+                        rs.getDouble("ivssVes"),
+                        rs.getDouble("faovVes"),
+                        rs.getDouble("netoVes"),
+                        rs.getDouble("netoUsd"),
+                        rs.getDouble("horasExtras"),
+                        rs.getDouble("horasNocturnas"),
+                        rs.getDouble("diasFeriados"),
+                        rs.getDouble("bonosExtrasUsd"),
+                        rs.getDouble("diasNoTrabajados"),
+                        rs.getDouble("adelantoVes"),
+                        rs.getDouble("adelantoUsd")
+                );
+                historico.add(recibo);
             }
-        } catch (IOException e) {
+        } catch (SQLException e) {
             System.err.println("Error al cargar histórico de nóminas: " + e.getMessage());
         }
     }
 
     /**
-     * Guarda el historial de nóminas completo en el archivo CSV.
+     * Guarda el historial de nóminas completo en la base de datos SQLite.
      */
     public static void save() {
-        try (BufferedWriter bw = new BufferedWriter(new FileWriter(FILE_NAME))) {
-            bw.write("PeriodoId,Cedula,NombreCompleto,SalarioMensualUsd,TasaBcv,SueldoBasePeriodoUsd," +
-                    "SueldoBasePeriodoVes,CestaTicketVes,IvssVes,FaovVes,NetoVes,NetoUsd");
-            bw.newLine();
-            for (ReciboNomina recibo : historico) {
-                bw.write(recibo.toString());
-                bw.newLine();
+        String sql = "INSERT OR REPLACE INTO nominas (periodoId, cedula, nombreCompleto, salarioMensualUsd, tasaBcv, " +
+                "sueldoBasePeriodoUsd, sueldoBasePeriodoVes, cestaTicketVes, ivssVes, faovVes, netoVes, netoUsd, " +
+                "horasExtras, horasNocturnas, diasFeriados, bonosExtrasUsd, diasNoTrabajados, adelantoVes, adelantoUsd) " +
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        try (Connection conn = DatabaseHelper.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+
+            conn.setAutoCommit(false);
+            for (ReciboNomina r : historico) {
+                pstmt.setString(1, r.getPeriodoId());
+                pstmt.setString(2, r.getCedula());
+                pstmt.setString(3, r.getNombreCompleto());
+                pstmt.setDouble(4, r.getSalarioMensualUsd());
+                pstmt.setDouble(5, r.getTasaBcv());
+                pstmt.setDouble(6, r.getSueldoBasePeriodoUsd());
+                pstmt.setDouble(7, r.getSueldoBasePeriodoVes());
+                pstmt.setDouble(8, r.getCestaTicketVes());
+                pstmt.setDouble(9, r.getIvssVes());
+                pstmt.setDouble(10, r.getFaovVes());
+                pstmt.setDouble(11, r.getNetoVes());
+                pstmt.setDouble(12, r.getNetoUsd());
+                pstmt.setDouble(13, r.getHorasExtras());
+                pstmt.setDouble(14, r.getHorasNocturnas());
+                pstmt.setDouble(15, r.getDiasFeriados());
+                pstmt.setDouble(16, r.getBonosExtrasUsd());
+                pstmt.setDouble(17, r.getDiasNoTrabajados());
+                pstmt.setDouble(18, r.getAdelantoVes());
+                pstmt.setDouble(19, r.getAdelantoUsd());
+                pstmt.addBatch();
             }
+            pstmt.executeBatch();
+            conn.commit();
             notifyListeners();
-        } catch (IOException e) {
+        } catch (SQLException e) {
             System.err.println("Error al guardar histórico de nóminas: " + e.getMessage());
         }
     }
@@ -78,36 +111,149 @@ public final class NominaRepository {
      * Registra o sobreescribe los recibos de un periodo específico.
      */
     public static void guardarPeriodo(String periodoId, List<ReciboNomina> recibos) {
-        // Eliminar registros anteriores de este mismo periodo si existen
-        historico.removeIf(r -> r.getPeriodoId().equalsIgnoreCase(periodoId));
-        historico.addAll(recibos);
-        save();
+        String deleteSql = "DELETE FROM nominas WHERE periodoId = ?";
+        String insertSql = "INSERT OR REPLACE INTO nominas (periodoId, cedula, nombreCompleto, salarioMensualUsd, tasaBcv, " +
+                "sueldoBasePeriodoUsd, sueldoBasePeriodoVes, cestaTicketVes, ivssVes, faovVes, netoVes, netoUsd, " +
+                "horasExtras, horasNocturnas, diasFeriados, bonosExtrasUsd, diasNoTrabajados, adelantoVes, adelantoUsd) " +
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+
+        try (Connection conn = DatabaseHelper.getConnection()) {
+            conn.setAutoCommit(false);
+            try (PreparedStatement deletePstmt = conn.prepareStatement(deleteSql)) {
+                deletePstmt.setString(1, periodoId);
+                deletePstmt.executeUpdate();
+            }
+            try (PreparedStatement pstmt = conn.prepareStatement(insertSql)) {
+                for (ReciboNomina r : recibos) {
+                    pstmt.setString(1, r.getPeriodoId());
+                    pstmt.setString(2, r.getCedula());
+                    pstmt.setString(3, r.getNombreCompleto());
+                    pstmt.setDouble(4, r.getSalarioMensualUsd());
+                    pstmt.setDouble(5, r.getTasaBcv());
+                    pstmt.setDouble(6, r.getSueldoBasePeriodoUsd());
+                    pstmt.setDouble(7, r.getSueldoBasePeriodoVes());
+                    pstmt.setDouble(8, r.getCestaTicketVes());
+                    pstmt.setDouble(9, r.getIvssVes());
+                    pstmt.setDouble(10, r.getFaovVes());
+                    pstmt.setDouble(11, r.getNetoVes());
+                    pstmt.setDouble(12, r.getNetoUsd());
+                    pstmt.setDouble(13, r.getHorasExtras());
+                    pstmt.setDouble(14, r.getHorasNocturnas());
+                    pstmt.setDouble(15, r.getDiasFeriados());
+                    pstmt.setDouble(16, r.getBonosExtrasUsd());
+                    pstmt.setDouble(17, r.getDiasNoTrabajados());
+                    pstmt.setDouble(18, r.getAdelantoVes());
+                    pstmt.setDouble(19, r.getAdelantoUsd());
+                    pstmt.addBatch();
+                }
+                pstmt.executeBatch();
+            }
+            conn.commit();
+
+            historico.removeIf(r -> r.getPeriodoId().equalsIgnoreCase(periodoId));
+            historico.addAll(recibos);
+            notifyListeners();
+        } catch (SQLException e) {
+            System.err.println("Error al guardar periodo en DB: " + e.getMessage());
+        }
     }
 
     /**
      * Retorna todos los recibos de un periodo.
      */
     public static List<ReciboNomina> obtenerPorPeriodo(String periodoId) {
-        return historico.stream()
-                .filter(r -> r.getPeriodoId().equalsIgnoreCase(periodoId))
-                .collect(Collectors.toList());
+        List<ReciboNomina> recibos = new ArrayList<>();
+        String sql = "SELECT * FROM nominas WHERE periodoId = ?";
+        try (Connection conn = DatabaseHelper.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setString(1, periodoId);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                while (rs.next()) {
+                    ReciboNomina recibo = new ReciboNomina(
+                            rs.getString("periodoId"),
+                            rs.getString("cedula"),
+                            rs.getString("nombreCompleto"),
+                            rs.getDouble("salarioMensualUsd"),
+                            rs.getDouble("tasaBcv"),
+                            rs.getDouble("sueldoBasePeriodoUsd"),
+                            rs.getDouble("sueldoBasePeriodoVes"),
+                            rs.getDouble("cestaTicketVes"),
+                            rs.getDouble("ivssVes"),
+                            rs.getDouble("faovVes"),
+                            rs.getDouble("netoVes"),
+                            rs.getDouble("netoUsd"),
+                            rs.getDouble("horasExtras"),
+                            rs.getDouble("horasNocturnas"),
+                            rs.getDouble("diasFeriados"),
+                            rs.getDouble("bonosExtrasUsd"),
+                            rs.getDouble("diasNoTrabajados"),
+                            rs.getDouble("adelantoVes"),
+                            rs.getDouble("adelantoUsd")
+                    );
+                    recibos.add(recibo);
+                }
+            }
+        } catch (SQLException e) {
+            System.err.println("Error al obtener recibos por periodo: " + e.getMessage());
+        }
+        return recibos;
     }
 
     /**
      * Retorna los IDs de todos los periodos procesados de forma única.
      */
     public static List<String> obtenerPeriodosProcesados() {
-        return historico.stream()
-                .map(ReciboNomina::getPeriodoId)
-                .distinct()
-                .collect(Collectors.toList());
+        List<String> periodos = new ArrayList<>();
+        String sql = "SELECT DISTINCT periodoId FROM nominas";
+        try (Connection conn = DatabaseHelper.getConnection();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(sql)) {
+            while (rs.next()) {
+                periodos.add(rs.getString("periodoId"));
+            }
+        } catch (SQLException e) {
+            System.err.println("Error al obtener periodos procesados: " + e.getMessage());
+        }
+        return periodos;
     }
 
     /**
      * Retorna el histórico completo de recibos.
      */
     public static List<ReciboNomina> obtenerTodo() {
-        return new ArrayList<>(historico);
+        List<ReciboNomina> todos = new ArrayList<>();
+        String sql = "SELECT * FROM nominas";
+        try (Connection conn = DatabaseHelper.getConnection();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(sql)) {
+            while (rs.next()) {
+                ReciboNomina recibo = new ReciboNomina(
+                        rs.getString("periodoId"),
+                        rs.getString("cedula"),
+                        rs.getString("nombreCompleto"),
+                        rs.getDouble("salarioMensualUsd"),
+                        rs.getDouble("tasaBcv"),
+                        rs.getDouble("sueldoBasePeriodoUsd"),
+                        rs.getDouble("sueldoBasePeriodoVes"),
+                        rs.getDouble("cestaTicketVes"),
+                        rs.getDouble("ivssVes"),
+                        rs.getDouble("faovVes"),
+                        rs.getDouble("netoVes"),
+                        rs.getDouble("netoUsd"),
+                        rs.getDouble("horasExtras"),
+                        rs.getDouble("horasNocturnas"),
+                        rs.getDouble("diasFeriados"),
+                        rs.getDouble("bonosExtrasUsd"),
+                        rs.getDouble("diasNoTrabajados"),
+                        rs.getDouble("adelantoVes"),
+                        rs.getDouble("adelantoUsd")
+                );
+                todos.add(recibo);
+            }
+        } catch (SQLException e) {
+            System.err.println("Error al obtener todos los recibos: " + e.getMessage());
+        }
+        return todos;
     }
 
     public static void addListener(NominaChangeListener listener) {
@@ -121,51 +267,6 @@ public final class NominaRepository {
     private static void notifyListeners() {
         for (NominaChangeListener listener : listeners) {
             listener.onNominaChanged();
-        }
-    }
-
-    private static ReciboNomina parseCsvLine(String line) {
-        try {
-            String[] parts = line.split(",");
-            if (parts.length < 12) return null;
-
-            String periodoId = parts[0].trim();
-            String cedula = parts[1].trim();
-            String nombreCompleto = parts[2].trim();
-            double salarioMensualUsd = Double.parseDouble(parts[3].trim());
-            double tasaBcv = Double.parseDouble(parts[4].trim());
-            double sueldoBasePeriodoUsd = Double.parseDouble(parts[5].trim());
-            double sueldoBasePeriodoVes = Double.parseDouble(parts[6].trim());
-            double cestaTicketVes = Double.parseDouble(parts[7].trim());
-            double ivssVes = Double.parseDouble(parts[8].trim());
-            double faovVes = Double.parseDouble(parts[9].trim());
-            double netoVes = Double.parseDouble(parts[10].trim());
-            double netoUsd = Double.parseDouble(parts[11].trim());
-
-            double horasExtras = 0;
-            double horasNocturnas = 0;
-            double diasFeriados = 0;
-            double bonosExtrasUsd = 0;
-            double diasNoTrabajados = 0;
-            double adelantoVes = 0;
-            double adelantoUsd = 0;
-
-            if (parts.length >= 19) {
-                horasExtras = Double.parseDouble(parts[12].trim());
-                horasNocturnas = Double.parseDouble(parts[13].trim());
-                diasFeriados = Double.parseDouble(parts[14].trim());
-                bonosExtrasUsd = Double.parseDouble(parts[15].trim());
-                diasNoTrabajados = Double.parseDouble(parts[16].trim());
-                adelantoVes = Double.parseDouble(parts[17].trim());
-                adelantoUsd = Double.parseDouble(parts[18].trim());
-            }
-
-            return new ReciboNomina(periodoId, cedula, nombreCompleto, salarioMensualUsd, tasaBcv,
-                    sueldoBasePeriodoUsd, sueldoBasePeriodoVes, cestaTicketVes, ivssVes, faovVes, netoVes, netoUsd,
-                    horasExtras, horasNocturnas, diasFeriados, bonosExtrasUsd, diasNoTrabajados, adelantoVes, adelantoUsd);
-        } catch (Exception e) {
-            System.err.println("Error al parsear línea de recibo: " + line + " -> " + e.getMessage());
-            return null;
         }
     }
 }

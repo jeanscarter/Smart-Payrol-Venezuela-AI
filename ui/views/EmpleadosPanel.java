@@ -21,6 +21,9 @@ public class EmpleadosPanel extends JPanel {
 
     private final DefaultTableModel tableModel;
     private final JLabel lblCount;
+    private final JButton btnEdit;
+    private final JButton btnDelete;
+    private final JTable table;
 
     private static final String[] COLUMNS = {
             "Cédula", "Nombre Completo", "Cargo", "Departamento",
@@ -32,7 +35,7 @@ public class EmpleadosPanel extends JPanel {
         setOpaque(false);
 
         // --- TITLE & ACTION SECTION ---
-        JPanel headerPanel = new JPanel(new MigLayout("insets 0", "[]8[]push[]12[]", "[]"));
+        JPanel headerPanel = new JPanel(new MigLayout("insets 0", "[]8[]push[]12[]12[]12[]", "[]"));
         headerPanel.setOpaque(false);
 
         JLabel title = new JLabel("Directorio de Empleados");
@@ -53,10 +56,22 @@ public class EmpleadosPanel extends JPanel {
         btnNewEmployee.addActionListener(e -> showNewEmployeeDialog());
         headerPanel.add(btnNewEmployee);
 
+        btnEdit = new JButton("✏️  Editar");
+        btnEdit.putClientProperty(FlatClientProperties.STYLE, "arc: 8; font: $semibold");
+        btnEdit.setEnabled(false);
+        btnEdit.addActionListener(e -> editSelectedEmployee());
+        headerPanel.add(btnEdit);
+
+        btnDelete = new JButton("🗑️  Eliminar");
+        btnDelete.putClientProperty(FlatClientProperties.STYLE, "arc: 8; font: $semibold");
+        btnDelete.setEnabled(false);
+        btnDelete.addActionListener(e -> deleteSelectedEmployee());
+        headerPanel.add(btnDelete);
+
         add(headerPanel, "growx");
 
         // --- SEARCH & FILTER BAR ---
-        JPanel filterBar = new JPanel(new MigLayout("insets 12, gap 12", "[grow, fill][180!]", "[]"));
+        JPanel filterBar = new JPanel(new MigLayout("insets 12, gap 12", "[grow, fill][220!]", "[]"));
         filterBar.putClientProperty(FlatClientProperties.STYLE, "arc: 12; background: $control");
 
         JTextField txtSearch = new JTextField();
@@ -84,11 +99,19 @@ public class EmpleadosPanel extends JPanel {
             }
         };
 
-        JTable table = new JTable(tableModel);
+        table = new JTable(tableModel);
         table.setRowHeight(36);
         table.setShowHorizontalLines(true);
         table.setShowVerticalLines(false);
         table.getTableHeader().putClientProperty(FlatClientProperties.STYLE, "font: bold; height: 32; background: $control");
+
+        table.getSelectionModel().addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting()) {
+                boolean hasSelection = table.getSelectedRow() >= 0;
+                btnEdit.setEnabled(hasSelection);
+                btnDelete.setEnabled(hasSelection);
+            }
+        });
 
         JScrollPane scrollPane = new JScrollPane(table);
         scrollPane.setBorder(BorderFactory.createEmptyBorder());
@@ -118,6 +141,8 @@ public class EmpleadosPanel extends JPanel {
             });
         }
         lblCount.setText("(" + lista.size() + " registrados)");
+        btnEdit.setEnabled(false);
+        btnDelete.setEnabled(false);
     }
 
     private void importCsv() {
@@ -164,6 +189,38 @@ public class EmpleadosPanel extends JPanel {
     }
 
     private void showNewEmployeeDialog() {
+        showEmployeeDialog(null);
+    }
+
+    private void editSelectedEmployee() {
+        int row = table.getSelectedRow();
+        if (row < 0) return;
+        String cedula = (String) tableModel.getValueAt(row, 0);
+        Empleado emp = EmpleadoRepository.getAll().stream()
+                .filter(e -> e.getCedula().equalsIgnoreCase(cedula))
+                .findFirst().orElse(null);
+        if (emp != null) {
+            showEmployeeDialog(emp);
+        }
+    }
+
+    private void deleteSelectedEmployee() {
+        int row = table.getSelectedRow();
+        if (row < 0) return;
+        String cedula = (String) tableModel.getValueAt(row, 0);
+        String nombre = (String) tableModel.getValueAt(row, 1);
+
+        int confirm = JOptionPane.showConfirmDialog(this,
+                "¿Está seguro de eliminar al empleado:\n" + nombre + " (C.I. " + cedula + ")?",
+                "Eliminar Empleado", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+
+        if (confirm == JOptionPane.YES_OPTION) {
+            EmpleadoRepository.remove(cedula);
+        }
+    }
+
+    private void showEmployeeDialog(Empleado emp) {
+        boolean isEdit = (emp != null);
         JPanel form = new JPanel(new MigLayout("wrap 2, insets 8, gapy 8, gapx 12", "[][grow, fill]", ""));
 
         JTextField txtCedula = new JTextField(18);
@@ -173,6 +230,17 @@ public class EmpleadosPanel extends JPanel {
         JTextField txtSalario = new JTextField(18);
         JComboBox<String> cmbContrato = new JComboBox<>(new String[]{"Indefinido", "Contrato Fijo", "Temporal"});
         JTextField txtFecha = new JTextField("2024-01-15", 18);
+
+        if (isEdit) {
+            txtCedula.setText(emp.getCedula());
+            txtCedula.setEditable(false);
+            txtNombre.setText(emp.getNombreCompleto());
+            txtCargo.setText(emp.getCargo());
+            cmbDepto.setSelectedItem(emp.getDepartamento());
+            txtSalario.setText(String.format("%.2f", emp.getSalarioUsd()));
+            cmbContrato.setSelectedItem(emp.getTipoContrato());
+            txtFecha.setText(emp.getFechaIngreso());
+        }
 
         form.add(new JLabel("Cédula:"));
         form.add(txtCedula);
@@ -189,7 +257,8 @@ public class EmpleadosPanel extends JPanel {
         form.add(new JLabel("Fecha Ingreso (YYYY-MM-DD):"));
         form.add(txtFecha);
 
-        int result = JOptionPane.showConfirmDialog(this, form, "Registrar Nuevo Empleado",
+        int result = JOptionPane.showConfirmDialog(this, form,
+                isEdit ? "Editar Empleado" : "Registrar Nuevo Empleado",
                 JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
 
         if (result != JOptionPane.OK_OPTION) return;
@@ -209,7 +278,13 @@ public class EmpleadosPanel extends JPanel {
                 return;
             }
 
-            EmpleadoRepository.add(new Empleado(cedula, nombre, cargo, depto, salario, contrato, "Activo", fecha));
+            Empleado nuevoEmp = new Empleado(cedula, nombre, cargo, depto, salario, contrato, isEdit ? emp.getEstado() : "Activo", fecha);
+
+            if (isEdit) {
+                EmpleadoRepository.update(nuevoEmp);
+            } else {
+                EmpleadoRepository.add(nuevoEmp);
+            }
 
         } catch (NumberFormatException e) {
             JOptionPane.showMessageDialog(this, "Ingrese un salario numérico válido.",
