@@ -27,6 +27,7 @@ public final class ConfigManager {
     private static final String DEFAULT_CESTA_TICKET_FIJA_USD = "20.00";
     private static final String DEFAULT_SALARIO_MINIMO = "130.00";
     private static final String DEFAULT_PENSION_PATRONAL = "9.0";
+    private static final String DEFAULT_LUGAR_EMISION = "Caracas";
 
     @FunctionalInterface
     public interface ConfigChangeListener {
@@ -100,6 +101,7 @@ public final class ConfigManager {
         properties.setProperty("cesta_ticket_fija_usd", DEFAULT_CESTA_TICKET_FIJA_USD);
         properties.setProperty("salario_minimo", DEFAULT_SALARIO_MINIMO);
         properties.setProperty("pension_patronal", DEFAULT_PENSION_PATRONAL);
+        properties.setProperty("lugar_emision", DEFAULT_LUGAR_EMISION);
     }
 
     // --- GETTERS & SETTERS CON CONVERSIÓN ---
@@ -182,6 +184,14 @@ public final class ConfigManager {
 
     public static void setPensionPatronal(double value) {
         properties.setProperty("pension_patronal", String.valueOf(value));
+    }
+
+    public static String getLugarEmision() {
+        return properties.getProperty("lugar_emision", DEFAULT_LUGAR_EMISION);
+    }
+
+    public static void setLugarEmision(String value) {
+        properties.setProperty("lugar_emision", value);
     }
 
     // --- EVENTOS / OBSERVER ---

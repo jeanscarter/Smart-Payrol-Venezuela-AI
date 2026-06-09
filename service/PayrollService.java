@@ -3,6 +3,8 @@ package com.nomina.service;
 import com.nomina.config.ConfigManager;
 import com.nomina.model.Empleado;
 import com.nomina.model.ReciboNomina;
+import com.nomina.model.FacturaMercancia;
+import com.nomina.repository.MercanciaRepository;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -18,7 +20,6 @@ public final class PayrollService {
 
     /**
      * Calcula la nómina para una lista de empleados bajo un periodo y tasa BCV dados.
-     * Método básico por compatibilidad.
      */
     public static List<ReciboNomina> calcularPeriodo(String periodoId, List<Empleado> empleados, double tasaBcv) {
         List<ReciboNomina> recibos = new ArrayList<>();
@@ -26,7 +27,8 @@ public final class PayrollService {
             if (!"Activo".equalsIgnoreCase(emp.getEstado())) {
                 continue;
             }
-            recibos.add(calcularReciboDetallado(periodoId, emp, tasaBcv, 0, 0, 0, 0, 0, 0, 0));
+            double mercanciaUsd = calcularDeduccionMercancia(emp.getCedula(), periodoId);
+            recibos.add(calcularReciboDetallado(periodoId, emp, tasaBcv, 0, 0, 0, 0, 0, 0, 0, mercanciaUsd));
         }
         return recibos;
     }
@@ -39,7 +41,8 @@ public final class PayrollService {
             String periodoId, Empleado emp, double tasaBcv,
             double horasExtras, double horasNocturnas, double diasFeriados,
             double bonosExtrasUsd, double diasNoTrabajados,
-            double adelantoVes, double adelantoUsd) {
+            double adelantoVes, double adelantoUsd,
+            double deduccionMercanciaUsd) {
 
         double proporcion = ConfigManager.getProporcionPago();
         // Si el periodo es mensual completo (sufijo -M), la proporción es 1.0 (100%)
@@ -77,15 +80,11 @@ public final class PayrollService {
         double faovVes = sueldoBasePeriodoVes * faovPct;
 
         double deduccionesLegalesUsd = (ivssVes + faovVes) / tasaBcv;
-        double deduccionesTotalesUsd = deduccionesLegalesUsd + deduccionNoTrabajadosUsd + adelantoUsd;
+        double deduccionesTotalesUsd = deduccionesLegalesUsd + deduccionNoTrabajadosUsd + adelantoUsd + deduccionMercanciaUsd;
 
         // Cesta ticket quincenal o mensual en USD
         double cestaTicketFijaUsd = ConfigManager.getCestaTicketFijaUsd();
         if (periodoId != null && periodoId.endsWith("-M")) {
-            cestaTicketFijaUsd = ConfigManager.getCestaTicket(); // si es mensual completo se usa el total
-            // Si el total está guardado en VES, se convierte a USD, pero cestaTicketFijaUsd es USD fijo
-            // Si la cestaTicket mensual en VES es por ejemplo 1407.00, podemos calcular la tasa.
-            // Para mantener consistencia con cestaTicketFijaUsd, si es mensual es el doble de la fija quincenal.
             cestaTicketFijaUsd = ConfigManager.getCestaTicketFijaUsd() * 2.0;
         }
         double cestaTicketVes = cestaTicketFijaUsd * tasaBcv;
@@ -113,7 +112,74 @@ public final class PayrollService {
                 bonosExtrasUsd,
                 diasNoTrabajados,
                 adelantoVes,
-                adelantoUsd
+                adelantoUsd,
+                deduccionMercanciaUsd,
+                deduccionMercanciaUsd * tasaBcv
         );
+    }
+
+    /**
+     * Calcula la deducción de mercancía acumulada para un empleado en un periodo de nómina.
+     */
+    public static double calcularDeduccionMercancia(String cedula, String periodoId) {
+        String periodEnd = getPeriodEndDate(periodoId);
+        double totalDeduccion = 0;
+
+        List<FacturaMercancia> facturas = MercanciaRepository.obtenerPorEmpleado(cedula);
+        for (FacturaMercancia f : facturas) {
+            if ("PAGADA".equalsIgnoreCase(f.getEstado()) || f.isPostergada()) {
+                continue;
+            }
+
+            // Verificar si el vencimiento es menor o igual al fin de periodo
+            if (f.getFechaVencimiento().compareTo(periodEnd) > 0) {
+                continue;
+            }
+
+            // Excluir si la factura se generó hace menos de 5 días de la fecha de cierre
+            long days = getDaysBetween(f.getFechaEmision(), periodEnd);
+            if (days < 5) {
+                continue;
+            }
+
+            totalDeduccion += (f.getMontoTotal() - f.getMontoAbonado());
+        }
+        return totalDeduccion;
+    }
+
+    /**
+     * Determina la fecha de fin de período (corte de nómina) a partir del ID del período.
+     */
+    public static String getPeriodEndDate(String periodoId) {
+        try {
+            String[] parts = periodoId.split("-");
+            if (parts.length < 3) return "2026-06-15";
+            int year = Integer.parseInt(parts[0]);
+            int month = Integer.parseInt(parts[1]);
+            String type = parts[2];
+
+            if ("Q1".equalsIgnoreCase(type)) {
+                return String.format("%d-%02d-15", year, month);
+            } else {
+                java.time.LocalDate lastDay = java.time.LocalDate.of(year, month, 1)
+                        .with(java.time.temporal.TemporalAdjusters.lastDayOfMonth());
+                return lastDay.toString();
+            }
+        } catch (Exception e) {
+            return "2026-06-15";
+        }
+    }
+
+    /**
+     * Calcula la diferencia en días entre dos fechas (formato YYYY-MM-DD).
+     */
+    public static long getDaysBetween(String date1, String date2) {
+        try {
+            java.time.LocalDate d1 = java.time.LocalDate.parse(date1);
+            java.time.LocalDate d2 = java.time.LocalDate.parse(date2);
+            return java.time.temporal.ChronoUnit.DAYS.between(d1, d2);
+        } catch (Exception e) {
+            return 0;
+        }
     }
 }

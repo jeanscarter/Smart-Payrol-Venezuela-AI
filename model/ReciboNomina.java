@@ -26,6 +26,10 @@ public class ReciboNomina {
     private double adelantoVes;
     private double adelantoUsd;
 
+    // Campos de deducción de mercancía
+    private double deduccionMercanciaUsd;
+    private double deduccionMercanciaVes;
+
     public ReciboNomina() {
     }
 
@@ -33,7 +37,7 @@ public class ReciboNomina {
                         double tasaBcv, double sueldoBasePeriodoUsd, double sueldoBasePeriodoVes,
                         double cestaTicketVes, double ivssVes, double faovVes, double netoVes, double netoUsd) {
         this(periodoId, cedula, nombreCompleto, salarioMensualUsd, tasaBcv, sueldoBasePeriodoUsd, sueldoBasePeriodoVes,
-             cestaTicketVes, ivssVes, faovVes, netoVes, netoUsd, 0, 0, 0, 0, 0, 0, 0);
+             cestaTicketVes, ivssVes, faovVes, netoVes, netoUsd, 0, 0, 0, 0, 0, 0, 0, 0.0, 0.0);
     }
 
     public ReciboNomina(String periodoId, String cedula, String nombreCompleto, double salarioMensualUsd,
@@ -41,6 +45,17 @@ public class ReciboNomina {
                         double cestaTicketVes, double ivssVes, double faovVes, double netoVes, double netoUsd,
                         double horasExtras, double horasNocturnas, double diasFeriados, double bonosExtrasUsd,
                         double diasNoTrabajados, double adelantoVes, double adelantoUsd) {
+        this(periodoId, cedula, nombreCompleto, salarioMensualUsd, tasaBcv, sueldoBasePeriodoUsd, sueldoBasePeriodoVes,
+             cestaTicketVes, ivssVes, faovVes, netoVes, netoUsd, horasExtras, horasNocturnas, diasFeriados, bonosExtrasUsd,
+             diasNoTrabajados, adelantoVes, adelantoUsd, 0.0, 0.0);
+    }
+
+    public ReciboNomina(String periodoId, String cedula, String nombreCompleto, double salarioMensualUsd,
+                        double tasaBcv, double sueldoBasePeriodoUsd, double sueldoBasePeriodoVes,
+                        double cestaTicketVes, double ivssVes, double faovVes, double netoVes, double netoUsd,
+                        double horasExtras, double horasNocturnas, double diasFeriados, double bonosExtrasUsd,
+                        double diasNoTrabajados, double adelantoVes, double adelantoUsd,
+                        double deduccionMercanciaUsd, double deduccionMercanciaVes) {
         this.periodoId = periodoId;
         this.cedula = cedula;
         this.nombreCompleto = nombreCompleto;
@@ -60,6 +75,8 @@ public class ReciboNomina {
         this.diasNoTrabajados = diasNoTrabajados;
         this.adelantoVes = adelantoVes;
         this.adelantoUsd = adelantoUsd;
+        this.deduccionMercanciaUsd = deduccionMercanciaUsd;
+        this.deduccionMercanciaVes = deduccionMercanciaVes;
     }
 
     // --- GETTERS & SETTERS ---
@@ -216,11 +233,28 @@ public class ReciboNomina {
         this.adelantoUsd = adelantoUsd;
     }
 
+    public double getDeduccionMercanciaUsd() {
+        return deduccionMercanciaUsd;
+    }
+
+    public void setDeduccionMercanciaUsd(double deduccionMercanciaUsd) {
+        this.deduccionMercanciaUsd = deduccionMercanciaUsd;
+    }
+
+    public double getDeduccionMercanciaVes() {
+        return deduccionMercanciaVes;
+    }
+
+    public void setDeduccionMercanciaVes(double deduccionMercanciaVes) {
+        this.deduccionMercanciaVes = deduccionMercanciaVes;
+    }
+
     @Override
     public String toString() {
-        return String.format("%s,%s,%s,%.2f,%.4f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f",
+        return String.format("%s,%s,%s,%.2f,%.4f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f",
                 periodoId, cedula, nombreCompleto, salarioMensualUsd, tasaBcv, sueldoBasePeriodoUsd,
                 sueldoBasePeriodoVes, cestaTicketVes, ivssVes, faovVes, netoVes, netoUsd,
-                horasExtras, horasNocturnas, diasFeriados, bonosExtrasUsd, diasNoTrabajados, adelantoVes, adelantoUsd);
+                horasExtras, horasNocturnas, diasFeriados, bonosExtrasUsd, diasNoTrabajados, adelantoVes, adelantoUsd,
+                deduccionMercanciaUsd, deduccionMercanciaVes);
     }
 }

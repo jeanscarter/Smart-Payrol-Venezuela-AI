@@ -54,6 +54,7 @@ public class MainFrame extends JFrame {
         viewManager.register("inicio", new InicioPanel());
         viewManager.register("empleados", new EmpleadosPanel());
         viewManager.register("nomina", new NominaPanel());
+        viewManager.register("mercancia", new MercanciaPanel());
         viewManager.register("reportes", new ReportesPanel());
         viewManager.register("configuracion", new ConfiguracionPanel());
         viewManager.register("acerca", new AcercaPanel());

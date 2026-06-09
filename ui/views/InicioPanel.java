@@ -3,7 +3,10 @@ package com.nomina.ui.views;
 import com.formdev.flatlaf.FlatClientProperties;
 import com.nomina.config.ConfigManager;
 import com.nomina.model.Empleado;
+import com.nomina.model.FacturaMercancia;
 import com.nomina.repository.EmpleadoRepository;
+import com.nomina.repository.MercanciaRepository;
+import com.nomina.router.ViewManager;
 import net.miginfocom.swing.MigLayout;
 
 import javax.swing.*;
@@ -21,6 +24,7 @@ public class InicioPanel extends JPanel {
     private final JLabel lblTasaVal;
     private final JLabel lblCestaVal;
     private final ChartPlaceholder chart;
+    private final JPanel rightContentPanel;
 
     public InicioPanel() {
         setLayout(new MigLayout("wrap 4, fillx, insets 24, gap 16", "[grow, fill][grow, fill][grow, fill][grow, fill]", "[]16[]16[grow, fill]"));
@@ -56,17 +60,16 @@ public class InicioPanel extends JPanel {
         chart = new ChartPlaceholder();
         leftPanel.add(chart, "grow, h 250!");
 
-        // --- ACCIONES RÁPIDAS ---
-        JPanel rightPanel = new JPanel(new MigLayout("wrap, insets 16, gapy 12", "[grow, fill]"));
+        // --- ACCIONES RÁPIDAS (REEMPLAZADO POR MERCANCÍA) ---
+        JPanel rightPanel = new JPanel(new MigLayout("wrap, insets 16, gapy 8", "[grow, fill]"));
         rightPanel.putClientProperty(FlatClientProperties.STYLE, "arc: 16; background: $control");
-        JLabel lblActionsTitle = new JLabel("Acciones Rápidas");
-        lblActionsTitle.putClientProperty(FlatClientProperties.STYLE, "font: bold +2");
-        rightPanel.add(lblActionsTitle, "gapbottom 12");
+        JLabel lblActionsTitle = new JLabel("Facturas de Mercancía Pendientes");
+        lblActionsTitle.putClientProperty(FlatClientProperties.STYLE, "font: bold +1");
+        rightPanel.add(lblActionsTitle, "gapbottom 8");
 
-        rightPanel.add(createActionButton("Calcular Nómina Actual", "\u2699"));
-        rightPanel.add(createActionButton("Registrar Nuevo Empleado", "\uD83D\uDC64"));
-        rightPanel.add(createActionButton("Importar Empleados (.CSV)", "\uD83D\uDCE5"));
-        rightPanel.add(createActionButton("Generar Reporte de Ley (FAOV)", "\uD83D\uDCC4"));
+        rightContentPanel = new JPanel(new MigLayout("wrap, insets 0, gapy 6", "[grow, fill]"));
+        rightContentPanel.setOpaque(false);
+        rightPanel.add(rightContentPanel, "grow");
 
         add(leftPanel, "span 3, growy");
         add(rightPanel, "span 1, growy");
@@ -74,6 +77,7 @@ public class InicioPanel extends JPanel {
         updateDynamicValues();
         ConfigManager.addListener(this::updateDynamicValues);
         EmpleadoRepository.addListener(this::updateDynamicValues);
+        MercanciaRepository.addListener(this::updateDynamicValues);
     }
 
     private void updateDynamicValues() {
@@ -90,6 +94,64 @@ public class InicioPanel extends JPanel {
         lblCestaVal.setText(String.format("Bs. %,.2f", totalCesta));
         lblTasaVal.setText(String.format("Bs. %,.2f", tasa));
         chart.repaint();
+
+        if (rightContentPanel != null) {
+            updateMercanciaSummary(rightContentPanel);
+        }
+    }
+
+    private void updateMercanciaSummary(JPanel container) {
+        container.removeAll();
+        
+        List<FacturaMercancia> pendientes = MercanciaRepository.obtenerPendientes();
+        double totalDeuda = pendientes.stream().mapToDouble(FacturaMercancia::getSaldo).sum();
+        
+        JLabel lblTotalPendientes = new JLabel(String.format("Facturas pendientes: %d", pendientes.size()));
+        lblTotalPendientes.putClientProperty(FlatClientProperties.STYLE, "font: bold -1; foreground: $Label.disabledForeground");
+        
+        JLabel lblTotalMonto = new JLabel(String.format("Total Adeudado: $%,.2f", totalDeuda));
+        lblTotalMonto.putClientProperty(FlatClientProperties.STYLE, "font: bold +1; foreground: $accentColor");
+        
+        container.add(lblTotalPendientes);
+        container.add(lblTotalMonto, "gapbottom 8");
+        
+        int limit = Math.min(5, pendientes.size());
+        for (int i = 0; i < limit; i++) {
+            FacturaMercancia f = pendientes.get(i);
+            Empleado emp = EmpleadoRepository.getAll().stream()
+                    .filter(e -> e.getCedula().equalsIgnoreCase(f.getCedulaEmpleado()))
+                    .findFirst().orElse(null);
+            String empName = emp != null ? emp.getNombreCompleto() : f.getCedulaEmpleado();
+            if (empName.length() > 18) empName = empName.substring(0, 15) + "...";
+            
+            JPanel rowPanel = new JPanel(new MigLayout("insets 4 0 4 0", "[]push[]", "[]"));
+            rowPanel.setOpaque(false);
+            
+            JLabel lblEmpAndFact = new JLabel(String.format("%s (#%s)", empName, f.getNumeroFactura()));
+            lblEmpAndFact.putClientProperty(FlatClientProperties.STYLE, "font: -1");
+            
+            JLabel lblSaldo = new JLabel(String.format("$%,.2f", f.getSaldo()));
+            lblSaldo.putClientProperty(FlatClientProperties.STYLE, "font: bold -1; foreground: #e74c3c");
+            
+            rowPanel.add(lblEmpAndFact);
+            rowPanel.add(lblSaldo);
+            
+            container.add(rowPanel, "growx");
+        }
+        
+        if (pendientes.isEmpty()) {
+            JLabel lblEmpty = new JLabel("No hay facturas pendientes.");
+            lblEmpty.putClientProperty(FlatClientProperties.STYLE, "font: italic -1; foreground: $Label.disabledForeground");
+            container.add(lblEmpty, "gaptop 12, gapbottom 12");
+        }
+        
+        JButton btnVerTodas = new JButton("Ver Todas \u2192");
+        btnVerTodas.putClientProperty(FlatClientProperties.STYLE, "arc: 8; font: $semibold; background: $accentColor; foreground: #ffffff");
+        btnVerTodas.addActionListener(e -> ViewManager.getInstance().show("mercancia"));
+        container.add(btnVerTodas, "gaptop 12, growx");
+        
+        container.revalidate();
+        container.repaint();
     }
 
     private JPanel buildCard(String titleText, String icon, JLabel valueLabel, String footerText, String accentKey) {
@@ -113,13 +175,6 @@ public class InicioPanel extends JPanel {
         card.add(valueLabel);
         card.add(lblFooter);
         return card;
-    }
-
-    private JButton createActionButton(String text, String icon) {
-        JButton btn = new JButton(icon + "  " + text);
-        btn.putClientProperty(FlatClientProperties.STYLE, "arc: 8; font: $semibold; margin: 8,12,8,12");
-        btn.setHorizontalAlignment(SwingConstants.LEFT);
-        return btn;
     }
 
     private static class ChartPlaceholder extends JComponent {

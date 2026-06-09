@@ -23,6 +23,7 @@ public class ConfiguracionPanel extends JPanel {
     private final JTextField txtFaovPatron;
     private final JTextField txtPensionPatronal;
     private final JTextField txtProporcion;
+    private final JTextField txtLugarEmision;
 
     public ConfiguracionPanel() {
         setLayout(new MigLayout("wrap, fillx, insets 24, gapy 20", "[grow, fill]", "[]12[][grow, fill]"));
@@ -100,6 +101,11 @@ public class ConfiguracionPanel extends JPanel {
         txtProporcion.putClientProperty(FlatClientProperties.STYLE, "arc: 8");
         card.add(txtProporcion, "width 180!, right, wrap");
 
+        card.add(createFieldLabel("Lugar de Emisión del Recibo (PDF):", "Ciudad o región que aparecerá impresa en los recibos de pago (ej. Caracas)."));
+        txtLugarEmision = new JTextField();
+        txtLugarEmision.putClientProperty(FlatClientProperties.STYLE, "arc: 8");
+        card.add(txtLugarEmision, "width 180!, right, wrap");
+
         // Cargar valores iniciales de la configuración
         loadValues();
 
@@ -134,6 +140,7 @@ public class ConfiguracionPanel extends JPanel {
         txtFaovPatron.setText(String.format("%.1f", ConfigManager.getFaovPatronal()));
         txtPensionPatronal.setText(String.format("%.1f", ConfigManager.getPensionPatronal()));
         txtProporcion.setText(String.format("%.1f", ConfigManager.getProporcionPago() * 100.0));
+        txtLugarEmision.setText(ConfigManager.getLugarEmision());
     }
 
     private void saveValues() {
@@ -148,9 +155,15 @@ public class ConfiguracionPanel extends JPanel {
             double faovPatron = parseDouble(txtFaovPatron.getText());
             double pension = parseDouble(txtPensionPatronal.getText());
             double proporcion = parseDouble(txtProporcion.getText()) / 100.0;
+            String lugarEmision = txtLugarEmision.getText().trim();
 
             if (rif.isEmpty()) {
                 showError("El RIF del Patrono es obligatorio.");
+                return;
+            }
+
+            if (lugarEmision.isEmpty()) {
+                showError("El Lugar de Emisión es obligatorio.");
                 return;
             }
 
@@ -169,6 +182,7 @@ public class ConfiguracionPanel extends JPanel {
             ConfigManager.setFaovPatronal(faovPatron);
             ConfigManager.setPensionPatronal(pension);
             ConfigManager.setProporcionPago(proporcion);
+            ConfigManager.setLugarEmision(lugarEmision);
             ConfigManager.save();
 
             JOptionPane.showMessageDialog(this,

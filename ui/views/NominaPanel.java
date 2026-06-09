@@ -48,14 +48,15 @@ public class NominaPanel extends JPanel {
     private final JTextField txtDiasNoTrabajados;
     private final JTextField txtAdelantoVes;
     private final JTextField txtAdelantoUsd;
+    private final JTextField txtDeduccionMercancia;
     private final JButton btnApplyVariables;
-    private ReciboNomina reciboSeleccionado = null;
+    private final List<ReciboNomina> recibosSeleccionados = new ArrayList<>();
 
     private List<ReciboNomina> recibosCalculados = new ArrayList<>();
     private boolean verEnVes = true; // Por defecto se visualiza en VES
 
     private static final String[] COLUMNS = {
-            "Cédula", "Empleado", "Sueldo Base", "Cesta Ticket", "Retención IVSS", "Retención FAOV", "Neto a Pagar"
+            "✓", "Cédula", "Empleado", "Sueldo Base", "Cesta Ticket", "Retención IVSS", "Retención FAOV", "Neto a Pagar"
     };
 
     public NominaPanel() {
@@ -160,13 +161,47 @@ public class NominaPanel extends JPanel {
             public boolean isCellEditable(int row, int column) {
                 return false;
             }
+
+            @Override
+            public Class<?> getColumnClass(int column) {
+                if (column == 0) return Boolean.class;
+                return super.getColumnClass(column);
+            }
         };
 
         table = new JTable(tableModel);
+        table.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
         table.setRowHeight(38);
         table.setShowHorizontalLines(true);
         table.setShowVerticalLines(false);
         table.getTableHeader().putClientProperty(FlatClientProperties.STYLE, "font: bold; height: 32; background: $control");
+
+        // Configurar ancho de la columna checkbox
+        table.getColumnModel().getColumn(0).setMinWidth(40);
+        table.getColumnModel().getColumn(0).setMaxWidth(40);
+        table.getColumnModel().getColumn(0).setPreferredWidth(40);
+
+        // Botones de selección rápida
+        JPanel selectActionsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
+        selectActionsPanel.setOpaque(false);
+        
+        JButton btnSelectAll = new JButton("Seleccionar Todos");
+        btnSelectAll.putClientProperty(FlatClientProperties.STYLE, "arc: 8; font: -1");
+        btnSelectAll.addActionListener(ev -> {
+            if (table.getRowCount() > 0) {
+                table.setRowSelectionInterval(0, table.getRowCount() - 1);
+            }
+        });
+        
+        JButton btnDeselectAll = new JButton("Deseleccionar Todos");
+        btnDeselectAll.putClientProperty(FlatClientProperties.STYLE, "arc: 8; font: -1");
+        btnDeselectAll.addActionListener(ev -> {
+            table.clearSelection();
+        });
+        
+        selectActionsPanel.add(btnSelectAll);
+        selectActionsPanel.add(btnDeselectAll);
+        tableContainer.add(selectActionsPanel, BorderLayout.NORTH);
 
         JScrollPane scrollPane = new JScrollPane(table);
         scrollPane.setBorder(BorderFactory.createEmptyBorder());
@@ -198,10 +233,12 @@ public class NominaPanel extends JPanel {
         txtDiasNoTrabajados = createLabeledInputField(detailPanel, "Días NO Trabajados (Inasistencias):", "Días de inasistencia a deducir.");
         txtAdelantoVes = createLabeledInputField(detailPanel, "Adelanto en Bs (VES):", "Adelantos entregados en bolívares.");
         txtAdelantoUsd = createLabeledInputField(detailPanel, "Adelanto en $ (USD):", "Adelantos entregados en dólares.");
+        txtDeduccionMercancia = createLabeledInputField(detailPanel, "Deducción Mercancía (Medicamentos - USD):", "Deducciones automáticas calculadas por compra de mercancía.");
+        txtDeduccionMercancia.setEditable(false);
+        txtDeduccionMercancia.putClientProperty(FlatClientProperties.STYLE, "background: $control.disabledBackground; foreground: $Label.disabledForeground");
 
         btnApplyVariables = new JButton("Aplicar Variables");
         btnApplyVariables.putClientProperty(FlatClientProperties.STYLE, "arc: 8; font: $semibold; background: $accentColor; foreground: #ffffff");
-        btnApplyVariables.setEnabled(false);
         btnApplyVariables.addActionListener(e -> applySelectedVariables());
         detailPanel.add(btnApplyVariables, "gaptop 8");
 
@@ -210,11 +247,26 @@ public class NominaPanel extends JPanel {
         // Selection listener for the table
         table.getSelectionModel().addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting()) {
-                int row = table.getSelectedRow();
-                if (row >= 0 && row < recibosCalculados.size()) {
-                    reciboSeleccionado = recibosCalculados.get(row);
-                } else {
-                    reciboSeleccionado = null;
+                int[] selectedRows = table.getSelectedRows();
+                recibosSeleccionados.clear();
+                for (int rRow : selectedRows) {
+                    if (rRow >= 0 && rRow < recibosCalculados.size()) {
+                        recibosSeleccionados.add(recibosCalculados.get(rRow));
+                    }
+                }
+                
+                // Update checkbox column values
+                for (int i = 0; i < tableModel.getRowCount(); i++) {
+                    boolean isSel = false;
+                    for (int selRow : selectedRows) {
+                        if (selRow == i) {
+                            isSel = true;
+                            break;
+                        }
+                    }
+                    if (tableModel.getRowCount() > i && !((Boolean) tableModel.getValueAt(i, 0)).equals(isSel)) {
+                        tableModel.setValueAt(isSel, i, 0);
+                    }
                 }
                 updateDetailPanel();
             }
@@ -256,11 +308,12 @@ public class NominaPanel extends JPanel {
         txtDiasNoTrabajados.setEnabled(enabled);
         txtAdelantoVes.setEnabled(enabled);
         txtAdelantoUsd.setEnabled(enabled);
+        txtDeduccionMercancia.setEnabled(enabled);
         btnApplyVariables.setEnabled(enabled);
     }
 
     private void updateDetailPanel() {
-        if (reciboSeleccionado == null) {
+        if (recibosSeleccionados.isEmpty()) {
             lblDetailName.setText("Seleccione un empleado");
             lblDetailCedula.setText("—");
             txtHorasExtras.setText("");
@@ -270,17 +323,35 @@ public class NominaPanel extends JPanel {
             txtDiasNoTrabajados.setText("");
             txtAdelantoVes.setText("");
             txtAdelantoUsd.setText("");
+            txtDeduccionMercancia.setText("");
             setDetailFieldsEnabled(false);
+        } else if (recibosSeleccionados.size() == 1) {
+            ReciboNomina r = recibosSeleccionados.get(0);
+            lblDetailName.setText(r.getNombreCompleto());
+            lblDetailCedula.setText("C.I. " + r.getCedula());
+            txtHorasExtras.setText(String.format("%.2f", r.getHorasExtras()));
+            txtHorasNocturnas.setText(String.format("%.2f", r.getHorasNocturnas()));
+            txtDiasFeriados.setText(String.format("%.2f", r.getDiasFeriados()));
+            txtBonosExtras.setText(String.format("%.2f", r.getBonosExtrasUsd()));
+            txtDiasNoTrabajados.setText(String.format("%.2f", r.getDiasNoTrabajados()));
+            txtAdelantoVes.setText(String.format("%.2f", r.getAdelantoVes()));
+            txtAdelantoUsd.setText(String.format("%.2f", r.getAdelantoUsd()));
+            txtDeduccionMercancia.setText(String.format("%.2f", r.getDeduccionMercanciaUsd()));
+
+            PeriodoComboItem item = (PeriodoComboItem) cmbPeriodo.getSelectedItem();
+            boolean yaProcesado = item != null && !NominaRepository.obtenerPorPeriodo(item.id).isEmpty();
+            setDetailFieldsEnabled(!yaProcesado);
         } else {
-            lblDetailName.setText(reciboSeleccionado.getNombreCompleto());
-            lblDetailCedula.setText("C.I. " + reciboSeleccionado.getCedula());
-            txtHorasExtras.setText(String.format("%.2f", reciboSeleccionado.getHorasExtras()));
-            txtHorasNocturnas.setText(String.format("%.2f", reciboSeleccionado.getHorasNocturnas()));
-            txtDiasFeriados.setText(String.format("%.2f", reciboSeleccionado.getDiasFeriados()));
-            txtBonosExtras.setText(String.format("%.2f", reciboSeleccionado.getBonosExtrasUsd()));
-            txtDiasNoTrabajados.setText(String.format("%.2f", reciboSeleccionado.getDiasNoTrabajados()));
-            txtAdelantoVes.setText(String.format("%.2f", reciboSeleccionado.getAdelantoVes()));
-            txtAdelantoUsd.setText(String.format("%.2f", reciboSeleccionado.getAdelantoUsd()));
+            lblDetailName.setText(recibosSeleccionados.size() + " empleados seleccionados");
+            lblDetailCedula.setText("Edición por lote");
+            txtHorasExtras.setText("");
+            txtHorasNocturnas.setText("");
+            txtDiasFeriados.setText("");
+            txtBonosExtras.setText("");
+            txtDiasNoTrabajados.setText("");
+            txtAdelantoVes.setText("");
+            txtAdelantoUsd.setText("");
+            txtDeduccionMercancia.setText("");
 
             PeriodoComboItem item = (PeriodoComboItem) cmbPeriodo.getSelectedItem();
             boolean yaProcesado = item != null && !NominaRepository.obtenerPorPeriodo(item.id).isEmpty();
@@ -289,46 +360,82 @@ public class NominaPanel extends JPanel {
     }
 
     private void applySelectedVariables() {
-        if (reciboSeleccionado == null) return;
+        if (recibosSeleccionados.isEmpty()) return;
         try {
-            double he = Double.parseDouble(txtHorasExtras.getText().trim().replace(",", "."));
-            double hn = Double.parseDouble(txtHorasNocturnas.getText().trim().replace(",", "."));
-            double df = Double.parseDouble(txtDiasFeriados.getText().trim().replace(",", "."));
-            double bonos = Double.parseDouble(txtBonosExtras.getText().trim().replace(",", "."));
-            double dnt = Double.parseDouble(txtDiasNoTrabajados.getText().trim().replace(",", "."));
-            double adVes = Double.parseDouble(txtAdelantoVes.getText().trim().replace(",", "."));
-            double adUsd = Double.parseDouble(txtAdelantoUsd.getText().trim().replace(",", "."));
+            Double he = parseOptionalDouble(txtHorasExtras.getText());
+            Double hn = parseOptionalDouble(txtHorasNocturnas.getText());
+            Double df = parseOptionalDouble(txtDiasFeriados.getText());
+            Double bonos = parseOptionalDouble(txtBonosExtras.getText());
+            Double dnt = parseOptionalDouble(txtDiasNoTrabajados.getText());
+            Double adVes = parseOptionalDouble(txtAdelantoVes.getText());
+            Double adUsd = parseOptionalDouble(txtAdelantoUsd.getText());
 
-            if (he < 0 || hn < 0 || df < 0 || bonos < 0 || dnt < 0 || adVes < 0 || adUsd < 0) {
+            if ((he != null && he < 0) || (hn != null && hn < 0) || (df != null && df < 0) || 
+                (bonos != null && bonos < 0) || (dnt != null && dnt < 0) || (adVes != null && adVes < 0) || 
+                (adUsd != null && adUsd < 0)) {
                 JOptionPane.showMessageDialog(this, "Todos los valores deben ser números positivos.", "Error de Validación", JOptionPane.ERROR_MESSAGE);
                 return;
             }
 
-            Empleado emp = EmpleadoRepository.getAll().stream()
-                    .filter(e -> e.getCedula().equalsIgnoreCase(reciboSeleccionado.getCedula()))
-                    .findFirst().orElse(null);
+            PeriodoComboItem item = (PeriodoComboItem) cmbPeriodo.getSelectedItem();
+            if (item == null) return;
+            double tasa = ConfigManager.getTasaBcv();
 
-            if (emp != null) {
-                double tasa = ConfigManager.getTasaBcv();
-                PeriodoComboItem item = (PeriodoComboItem) cmbPeriodo.getSelectedItem();
-                ReciboNomina nuevoRecibo = PayrollService.calcularReciboDetallado(
-                        item.id, emp, tasa, he, hn, df, bonos, dnt, adVes, adUsd
-                );
-
-                int index = recibosCalculados.indexOf(reciboSeleccionado);
+            List<Integer> selectedIndices = new ArrayList<>();
+            for (ReciboNomina sel : recibosSeleccionados) {
+                int index = recibosCalculados.indexOf(sel);
                 if (index >= 0) {
-                    recibosCalculados.set(index, nuevoRecibo);
-                    reciboSeleccionado = nuevoRecibo;
+                    selectedIndices.add(index);
                 }
-
-                repopulateTable();
-                updateKpiCards();
-                table.setRowSelectionInterval(index, index);
-                updateDetailPanel();
             }
+
+            for (ReciboNomina r : new ArrayList<>(recibosSeleccionados)) {
+                Empleado emp = EmpleadoRepository.getAll().stream()
+                        .filter(e -> e.getCedula().equalsIgnoreCase(r.getCedula()))
+                        .findFirst().orElse(null);
+
+                if (emp != null) {
+                    double finalHe = he != null ? he : r.getHorasExtras();
+                    double finalHn = hn != null ? hn : r.getHorasNocturnas();
+                    double finalDf = df != null ? df : r.getDiasFeriados();
+                    double finalBonos = bonos != null ? bonos : r.getBonosExtrasUsd();
+                    double finalDnt = dnt != null ? dnt : r.getDiasNoTrabajados();
+                    double finalAdVes = adVes != null ? adVes : r.getAdelantoVes();
+                    double finalAdUsd = adUsd != null ? adUsd : r.getAdelantoUsd();
+
+                    double mercanciaUsd = PayrollService.calcularDeduccionMercancia(emp.getCedula(), item.id);
+                    ReciboNomina nuevoRecibo = PayrollService.calcularReciboDetallado(
+                            item.id, emp, tasa, finalHe, finalHn, finalDf, finalBonos, finalDnt, finalAdVes, finalAdUsd, mercanciaUsd
+                    );
+
+                    int index = recibosCalculados.indexOf(r);
+                    if (index >= 0) {
+                        recibosCalculados.set(index, nuevoRecibo);
+                    }
+                }
+            }
+
+            repopulateTable();
+            updateKpiCards();
+
+            // Restore selection
+            table.clearSelection();
+            for (int index : selectedIndices) {
+                table.addRowSelectionInterval(index, index);
+            }
+            updateDetailPanel();
+
         } catch (NumberFormatException e) {
             JOptionPane.showMessageDialog(this, "Por favor ingrese valores numéricos válidos.", "Error de Formato", JOptionPane.ERROR_MESSAGE);
         }
+    }
+
+    private Double parseOptionalDouble(String text) throws NumberFormatException {
+        if (text == null || text.trim().isEmpty()) {
+            return null;
+        }
+        String cleaned = text.trim().replace(",", ".");
+        return Double.parseDouble(cleaned);
     }
 
     private void recalculate() {
@@ -351,7 +458,7 @@ public class NominaPanel extends JPanel {
         repopulateTable();
         updateKpiCards();
 
-        reciboSeleccionado = null;
+        recibosSeleccionados.clear();
         updateDetailPanel();
     }
 
@@ -375,8 +482,10 @@ public class NominaPanel extends JPanel {
     private void repopulateTable() {
         tableModel.setRowCount(0);
         for (ReciboNomina r : recibosCalculados) {
+            boolean isSelected = recibosSeleccionados.contains(r);
             if (verEnVes) {
                 tableModel.addRow(new Object[]{
+                        isSelected,
                         r.getCedula(),
                         r.getNombreCompleto(),
                         String.format("Bs. %,.2f", r.getSueldoBasePeriodoVes()),
@@ -387,6 +496,7 @@ public class NominaPanel extends JPanel {
                 });
             } else {
                 tableModel.addRow(new Object[]{
+                        isSelected,
                         r.getCedula(),
                         r.getNombreCompleto(),
                         String.format("$%,.2f", r.getSueldoBasePeriodoUsd()),
@@ -450,6 +560,26 @@ public class NominaPanel extends JPanel {
         if (confirm != JOptionPane.YES_OPTION) return;
 
         NominaRepository.guardarPeriodo(item.id, recibosCalculados);
+
+        // Liquidar facturas correspondientes en el repositorio de mercancía
+        String periodEnd = PayrollService.getPeriodEndDate(item.id);
+        for (ReciboNomina r : recibosCalculados) {
+            if (r.getDeduccionMercanciaUsd() > 0) {
+                List<com.nomina.model.FacturaMercancia> facturas = com.nomina.repository.MercanciaRepository.obtenerPorEmpleado(r.getCedula());
+                for (com.nomina.model.FacturaMercancia f : facturas) {
+                    if ("PAGADA".equalsIgnoreCase(f.getEstado()) || f.isPostergada()) {
+                        continue;
+                    }
+                    if (f.getFechaVencimiento().compareTo(periodEnd) <= 0) {
+                        long days = PayrollService.getDaysBetween(f.getFechaEmision(), periodEnd);
+                        if (days >= 5) {
+                            com.nomina.repository.MercanciaRepository.pagarCompleto(f.getId());
+                        }
+                    }
+                }
+            }
+        }
+
         recalculate();
 
         JOptionPane.showMessageDialog(this,

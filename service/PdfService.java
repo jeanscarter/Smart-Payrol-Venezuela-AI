@@ -88,7 +88,7 @@ public final class PdfService {
         companyCell.setBorder(Rectangle.NO_BORDER);
         companyCell.addElement(new Paragraph("NÓMINA INTELIGENTE C.A.", titleFont));
         companyCell.addElement(new Paragraph("RIF: " + rifPatrono, subtitleFont));
-        companyCell.addElement(new Paragraph("Caracas, Venezuela", subtitleFont));
+        companyCell.addElement(new Paragraph(ConfigManager.getLugarEmision() + ", Venezuela", subtitleFont));
         headerTable.addCell(companyCell);
 
         PdfPCell titleCell = new PdfPCell();
@@ -212,6 +212,10 @@ public final class PdfService {
         addConceptRow(conceptTable, "Retención Seguro Social (IVSS 4%)", "Deducción", -ivssUsd, -r.getIvssVes(), tableBodyFont, tableBodyDeductionFont);
         addConceptRow(conceptTable, "Retención Viv. y Hábitat (FAOV 1%)", "Deducción", -faovUsd, -r.getFaovVes(), tableBodyFont, tableBodyDeductionFont);
 
+        if (r.getDeduccionMercanciaUsd() > 0) {
+            addConceptRow(conceptTable, "Deducción de Mercancía (Medicamentos)", "Deducción", -r.getDeduccionMercanciaUsd(), -r.getDeduccionMercanciaVes(), tableBodyFont, tableBodyDeductionFont);
+        }
+
         document.add(conceptTable);
         document.add(new Paragraph(" ")); // Espaciador
 
@@ -236,7 +240,7 @@ public final class PdfService {
         if (r.getDiasFeriados() > 0) totalAsignacionesVes += r.getDiasFeriados() * (r.getSalarioMensualUsd() / 30.0) * 1.50 * r.getTasaBcv();
         if (r.getBonosExtrasUsd() > 0) totalAsignacionesVes += r.getBonosExtrasUsd() * r.getTasaBcv();
 
-        double totalDeduccionesVes = r.getIvssVes() + r.getFaovVes();
+        double totalDeduccionesVes = r.getIvssVes() + r.getFaovVes() + r.getDeduccionMercanciaVes();
         if (r.getDiasNoTrabajados() > 0) totalDeduccionesVes += r.getDiasNoTrabajados() * (r.getSalarioMensualUsd() / 30.0) * r.getTasaBcv();
         if (r.getAdelantoUsd() > 0) totalDeduccionesVes += r.getAdelantoUsd() * r.getTasaBcv();
         if (r.getAdelantoVes() > 0) totalDeduccionesVes += r.getAdelantoVes();

@@ -11,6 +11,7 @@ import javax.swing.filechooser.FileNameExtensionFilter;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -24,10 +25,16 @@ public class EmpleadosPanel extends JPanel {
     private final JButton btnEdit;
     private final JButton btnDelete;
     private final JTable table;
+    private final JTextField txtSearch;
+    private final JComboBox<String> cmbDepartaments;
 
     private static final String[] COLUMNS = {
-            "Cédula", "Nombre Completo", "Cargo", "Departamento",
+            "✓", "Cédula", "Nombre Completo", "Cargo", "Departamento",
             "Salario Base (USD)", "Tipo Contrato", "Estado"
+    };
+
+    private static final String[] DEPARTMENTS = {
+            "Administración", "Cobranzas", "Compras", "Finanzas", "Operaciones", "Recursos Humanos", "Seguridad", "Tecnología", "Ventas"
     };
 
     public EmpleadosPanel() {
@@ -74,14 +81,23 @@ public class EmpleadosPanel extends JPanel {
         JPanel filterBar = new JPanel(new MigLayout("insets 12, gap 12", "[grow, fill][220!]", "[]"));
         filterBar.putClientProperty(FlatClientProperties.STYLE, "arc: 12; background: $control");
 
-        JTextField txtSearch = new JTextField();
+        txtSearch = new JTextField();
         txtSearch.putClientProperty(FlatClientProperties.PLACEHOLDER_TEXT, "Buscar por nombre, cédula o cargo...");
         txtSearch.putClientProperty(FlatClientProperties.STYLE, "arc: 8");
-
-        JComboBox<String> cmbDepartaments = new JComboBox<>(new String[]{
-                "Todos los Departamentos", "Tecnología", "Recursos Humanos", "Finanzas", "Operaciones"
+        txtSearch.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
+            public void insertUpdate(javax.swing.event.DocumentEvent e) { refreshTable(); }
+            public void removeUpdate(javax.swing.event.DocumentEvent e) { refreshTable(); }
+            public void changedUpdate(javax.swing.event.DocumentEvent e) { refreshTable(); }
         });
+
+        List<String> deptoOptions = new ArrayList<>();
+        deptoOptions.add("Todos los Departamentos");
+        for (String d : DEPARTMENTS) {
+            deptoOptions.add(d);
+        }
+        cmbDepartaments = new JComboBox<>(deptoOptions.toArray(new String[0]));
         cmbDepartaments.putClientProperty(FlatClientProperties.STYLE, "arc: 8");
+        cmbDepartaments.addActionListener(e -> refreshTable());
 
         filterBar.add(txtSearch, "growx");
         filterBar.add(cmbDepartaments, "width 220!");
@@ -97,19 +113,68 @@ public class EmpleadosPanel extends JPanel {
             public boolean isCellEditable(int row, int column) {
                 return false;
             }
+
+            @Override
+            public Class<?> getColumnClass(int column) {
+                if (column == 0) return Boolean.class;
+                return super.getColumnClass(column);
+            }
         };
 
         table = new JTable(tableModel);
+        table.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
         table.setRowHeight(36);
         table.setShowHorizontalLines(true);
         table.setShowVerticalLines(false);
         table.getTableHeader().putClientProperty(FlatClientProperties.STYLE, "font: bold; height: 32; background: $control");
 
+        // Configurar ancho de la columna checkbox
+        table.getColumnModel().getColumn(0).setMinWidth(40);
+        table.getColumnModel().getColumn(0).setMaxWidth(40);
+        table.getColumnModel().getColumn(0).setPreferredWidth(40);
+
+        // Botones de selección rápida
+        JPanel selectActionsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
+        selectActionsPanel.setOpaque(false);
+        
+        JButton btnSelectAll = new JButton("Seleccionar Todos");
+        btnSelectAll.putClientProperty(FlatClientProperties.STYLE, "arc: 8; font: -1");
+        btnSelectAll.addActionListener(ev -> {
+            if (table.getRowCount() > 0) {
+                table.setRowSelectionInterval(0, table.getRowCount() - 1);
+            }
+        });
+        
+        JButton btnDeselectAll = new JButton("Deseleccionar Todos");
+        btnDeselectAll.putClientProperty(FlatClientProperties.STYLE, "arc: 8; font: -1");
+        btnDeselectAll.addActionListener(ev -> {
+            table.clearSelection();
+        });
+        
+        selectActionsPanel.add(btnSelectAll);
+        selectActionsPanel.add(btnDeselectAll);
+        tableContainer.add(selectActionsPanel, BorderLayout.NORTH);
+
         table.getSelectionModel().addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting()) {
-                boolean hasSelection = table.getSelectedRow() >= 0;
+                int[] selectedRows = table.getSelectedRows();
+                boolean hasSelection = selectedRows.length > 0;
                 btnEdit.setEnabled(hasSelection);
                 btnDelete.setEnabled(hasSelection);
+
+                // Sincronizar checkboxes de las filas
+                for (int i = 0; i < tableModel.getRowCount(); i++) {
+                    boolean isSel = false;
+                    for (int selRow : selectedRows) {
+                        if (selRow == i) {
+                            isSel = true;
+                            break;
+                        }
+                    }
+                    if (tableModel.getRowCount() > i && !((Boolean) tableModel.getValueAt(i, 0)).equals(isSel)) {
+                        tableModel.setValueAt(isSel, i, 0);
+                    }
+                }
             }
         });
 
@@ -127,10 +192,30 @@ public class EmpleadosPanel extends JPanel {
     }
 
     private void refreshTable() {
+        if (tableModel == null) return;
         tableModel.setRowCount(0);
+        String searchText = txtSearch == null ? "" : txtSearch.getText().toLowerCase().trim();
+        String selectedDepto = cmbDepartaments == null ? "Todos los Departamentos" : (String) cmbDepartaments.getSelectedItem();
+
         List<Empleado> lista = EmpleadoRepository.getAll();
+        int shownCount = 0;
         for (Empleado emp : lista) {
+            // Filtrado de búsqueda
+            if (!searchText.isEmpty()) {
+                boolean match = emp.getNombreCompleto().toLowerCase().contains(searchText)
+                        || emp.getCedula().toLowerCase().contains(searchText)
+                        || emp.getCargo().toLowerCase().contains(searchText);
+                if (!match) continue;
+            }
+            // Filtrado de departamento
+            if (selectedDepto != null && !selectedDepto.equals("Todos los Departamentos")) {
+                if (!emp.getDepartamento().equalsIgnoreCase(selectedDepto)) {
+                    continue;
+                }
+            }
+
             tableModel.addRow(new Object[]{
+                    false, // Checkbox
                     emp.getCedula(),
                     emp.getNombreCompleto(),
                     emp.getCargo(),
@@ -139,10 +224,14 @@ public class EmpleadosPanel extends JPanel {
                     emp.getTipoContrato(),
                     emp.getEstado()
             });
+            shownCount++;
         }
-        lblCount.setText("(" + lista.size() + " registrados)");
-        btnEdit.setEnabled(false);
-        btnDelete.setEnabled(false);
+        
+        if (lblCount != null) {
+            lblCount.setText("(" + shownCount + " mostrados de " + lista.size() + " registrados)");
+        }
+        if (btnEdit != null) btnEdit.setEnabled(false);
+        if (btnDelete != null) btnDelete.setEnabled(false);
     }
 
     private void importCsv() {
@@ -193,29 +282,130 @@ public class EmpleadosPanel extends JPanel {
     }
 
     private void editSelectedEmployee() {
-        int row = table.getSelectedRow();
-        if (row < 0) return;
-        String cedula = (String) tableModel.getValueAt(row, 0);
-        Empleado emp = EmpleadoRepository.getAll().stream()
-                .filter(e -> e.getCedula().equalsIgnoreCase(cedula))
-                .findFirst().orElse(null);
-        if (emp != null) {
-            showEmployeeDialog(emp);
+        int[] selectedRows = table.getSelectedRows();
+        if (selectedRows.length == 0) return;
+
+        if (selectedRows.length == 1) {
+            int row = selectedRows[0];
+            String cedula = (String) tableModel.getValueAt(row, 1);
+            Empleado emp = EmpleadoRepository.getAll().stream()
+                    .filter(e -> e.getCedula().equalsIgnoreCase(cedula))
+                    .findFirst().orElse(null);
+            if (emp != null) {
+                showEmployeeDialog(emp);
+            }
+        } else {
+            showMultiEditDialog(selectedRows);
         }
     }
 
     private void deleteSelectedEmployee() {
-        int row = table.getSelectedRow();
-        if (row < 0) return;
-        String cedula = (String) tableModel.getValueAt(row, 0);
-        String nombre = (String) tableModel.getValueAt(row, 1);
+        int[] selectedRows = table.getSelectedRows();
+        if (selectedRows.length == 0) return;
 
-        int confirm = JOptionPane.showConfirmDialog(this,
-                "¿Está seguro de eliminar al empleado:\n" + nombre + " (C.I. " + cedula + ")?",
-                "Eliminar Empleado", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+        if (selectedRows.length == 1) {
+            int row = selectedRows[0];
+            String cedula = (String) tableModel.getValueAt(row, 1);
+            String nombre = (String) tableModel.getValueAt(row, 2);
 
-        if (confirm == JOptionPane.YES_OPTION) {
-            EmpleadoRepository.remove(cedula);
+            int confirm = JOptionPane.showConfirmDialog(this,
+                    "¿Está seguro de eliminar al empleado:\n" + nombre + " (C.I. " + cedula + ")?",
+                    "Eliminar Empleado", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+
+            if (confirm == JOptionPane.YES_OPTION) {
+                EmpleadoRepository.remove(cedula);
+            }
+        } else {
+            int confirm = JOptionPane.showConfirmDialog(this,
+                    "¿Está seguro de eliminar a los " + selectedRows.length + " empleados seleccionados?",
+                    "Eliminar Múltiples Empleados", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+
+            if (confirm == JOptionPane.YES_OPTION) {
+                List<String> cedulas = new ArrayList<>();
+                for (int row : selectedRows) {
+                    cedulas.add((String) tableModel.getValueAt(row, 1));
+                }
+                for (String cedula : cedulas) {
+                    EmpleadoRepository.remove(cedula);
+                }
+            }
+        }
+    }
+
+    private void showMultiEditDialog(int[] selectedRows) {
+        JPanel form = new JPanel(new MigLayout("wrap 3, insets 8, gapy 8, gapx 12", "[][][grow, fill]", ""));
+
+        JCheckBox chkCargo = new JCheckBox("Cargo:");
+        JTextField txtCargo = new JTextField(18);
+        txtCargo.setEnabled(false);
+        chkCargo.addActionListener(e -> txtCargo.setEnabled(chkCargo.isSelected()));
+
+        JCheckBox chkDepto = new JCheckBox("Departamento:");
+        JComboBox<String> cmbDepto = new JComboBox<>(DEPARTMENTS);
+        cmbDepto.setEnabled(false);
+        chkDepto.addActionListener(e -> cmbDepto.setEnabled(chkDepto.isSelected()));
+
+        JCheckBox chkSalario = new JCheckBox("Salario Base (USD):");
+        JTextField txtSalario = new JTextField(18);
+        txtSalario.setEnabled(false);
+        chkSalario.addActionListener(e -> txtSalario.setEnabled(chkSalario.isSelected()));
+
+        JCheckBox chkContrato = new JCheckBox("Tipo de Contrato:");
+        JComboBox<String> cmbContrato = new JComboBox<>(new String[]{"Indefinido", "Contrato Fijo", "Temporal"});
+        cmbContrato.setEnabled(false);
+        chkContrato.addActionListener(e -> cmbContrato.setEnabled(chkContrato.isSelected()));
+
+        JCheckBox chkEstado = new JCheckBox("Estado:");
+        JComboBox<String> cmbEstado = new JComboBox<>(new String[]{"Activo", "Inactivo"});
+        cmbEstado.setEnabled(false);
+        chkEstado.addActionListener(e -> cmbEstado.setEnabled(chkEstado.isSelected()));
+
+        form.add(new JLabel("Modificar"), "span 2, header");
+        form.add(new JLabel("Valor"), "header");
+
+        form.add(chkCargo); form.add(new JLabel("")); form.add(txtCargo);
+        form.add(chkDepto); form.add(new JLabel("")); form.add(cmbDepto);
+        form.add(chkSalario); form.add(new JLabel("")); form.add(txtSalario);
+        form.add(chkContrato); form.add(new JLabel("")); form.add(cmbContrato);
+        form.add(chkEstado); form.add(new JLabel("")); form.add(cmbEstado);
+
+        int result = JOptionPane.showConfirmDialog(this, form,
+                "Editar " + selectedRows.length + " Empleados",
+                JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
+
+        if (result != JOptionPane.OK_OPTION) return;
+
+        try {
+            Double salarioVal = null;
+            if (chkSalario.isSelected()) {
+                salarioVal = Double.parseDouble(txtSalario.getText().trim().replace(",", "."));
+                if (salarioVal < 0) {
+                    JOptionPane.showMessageDialog(this, "El salario debe ser positivo.", "Error", JOptionPane.ERROR_MESSAGE);
+                    return;
+                }
+            }
+
+            List<String> cedulas = new ArrayList<>();
+            for (int row : selectedRows) {
+                cedulas.add((String) tableModel.getValueAt(row, 1));
+            }
+
+            for (String cedula : cedulas) {
+                Empleado emp = EmpleadoRepository.getAll().stream()
+                        .filter(e -> e.getCedula().equalsIgnoreCase(cedula))
+                        .findFirst().orElse(null);
+                if (emp != null) {
+                    if (chkCargo.isSelected()) emp.setCargo(txtCargo.getText().trim());
+                    if (chkDepto.isSelected()) emp.setDepartamento((String) cmbDepto.getSelectedItem());
+                    if (chkSalario.isSelected() && salarioVal != null) emp.setSalarioUsd(salarioVal);
+                    if (chkContrato.isSelected()) emp.setTipoContrato((String) cmbContrato.getSelectedItem());
+                    if (chkEstado.isSelected()) emp.setEstado((String) cmbEstado.getSelectedItem());
+                    EmpleadoRepository.update(emp.getCedula(), emp);
+                }
+            }
+        } catch (NumberFormatException e) {
+            JOptionPane.showMessageDialog(this, "Ingrese un salario numérico válido.",
+                    "Error", JOptionPane.ERROR_MESSAGE);
         }
     }
 
@@ -226,14 +416,14 @@ public class EmpleadosPanel extends JPanel {
         JTextField txtCedula = new JTextField(18);
         JTextField txtNombre = new JTextField(18);
         JTextField txtCargo = new JTextField(18);
-        JComboBox<String> cmbDepto = new JComboBox<>(new String[]{"Tecnología", "Finanzas", "Recursos Humanos", "Operaciones"});
+        JComboBox<String> cmbDepto = new JComboBox<>(DEPARTMENTS);
         JTextField txtSalario = new JTextField(18);
         JComboBox<String> cmbContrato = new JComboBox<>(new String[]{"Indefinido", "Contrato Fijo", "Temporal"});
         JTextField txtFecha = new JTextField("2024-01-15", 18);
 
         if (isEdit) {
             txtCedula.setText(emp.getCedula());
-            txtCedula.setEditable(false);
+            txtCedula.setEditable(true);
             txtNombre.setText(emp.getNombreCompleto());
             txtCargo.setText(emp.getCargo());
             cmbDepto.setSelectedItem(emp.getDepartamento());
@@ -278,10 +468,21 @@ public class EmpleadosPanel extends JPanel {
                 return;
             }
 
+            // Validar duplicidad de cédula
+            if (!isEdit || !cedula.equalsIgnoreCase(emp.getCedula())) {
+                boolean exists = EmpleadoRepository.getAll().stream()
+                        .anyMatch(e -> e.getCedula().equalsIgnoreCase(cedula));
+                if (exists) {
+                    JOptionPane.showMessageDialog(this, "La cédula ingresada ya pertenece a otro empleado.",
+                            "Error de Duplicidad", JOptionPane.ERROR_MESSAGE);
+                    return;
+                }
+            }
+
             Empleado nuevoEmp = new Empleado(cedula, nombre, cargo, depto, salario, contrato, isEdit ? emp.getEstado() : "Activo", fecha);
 
             if (isEdit) {
-                EmpleadoRepository.update(nuevoEmp);
+                EmpleadoRepository.update(emp.getCedula(), nuevoEmp);
             } else {
                 EmpleadoRepository.add(nuevoEmp);
             }

@@ -56,10 +56,13 @@ public final class NominaRepository {
                         rs.getDouble("bonosExtrasUsd"),
                         rs.getDouble("diasNoTrabajados"),
                         rs.getDouble("adelantoVes"),
-                        rs.getDouble("adelantoUsd")
+                        rs.getDouble("adelantoUsd"),
+                        rs.getDouble("deduccionMercanciaUsd"),
+                        rs.getDouble("deduccionMercanciaVes")
                 );
                 historico.add(recibo);
             }
+            notifyListeners();
         } catch (SQLException e) {
             System.err.println("Error al cargar histórico de nóminas: " + e.getMessage());
         }
@@ -71,8 +74,9 @@ public final class NominaRepository {
     public static void save() {
         String sql = "INSERT OR REPLACE INTO nominas (periodoId, cedula, nombreCompleto, salarioMensualUsd, tasaBcv, " +
                 "sueldoBasePeriodoUsd, sueldoBasePeriodoVes, cestaTicketVes, ivssVes, faovVes, netoVes, netoUsd, " +
-                "horasExtras, horasNocturnas, diasFeriados, bonosExtrasUsd, diasNoTrabajados, adelantoVes, adelantoUsd) " +
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                "horasExtras, horasNocturnas, diasFeriados, bonosExtrasUsd, diasNoTrabajados, adelantoVes, adelantoUsd, " +
+                "deduccionMercanciaUsd, deduccionMercanciaVes) " +
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
         try (Connection conn = DatabaseHelper.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
 
@@ -97,6 +101,8 @@ public final class NominaRepository {
                 pstmt.setDouble(17, r.getDiasNoTrabajados());
                 pstmt.setDouble(18, r.getAdelantoVes());
                 pstmt.setDouble(19, r.getAdelantoUsd());
+                pstmt.setDouble(20, r.getDeduccionMercanciaUsd());
+                pstmt.setDouble(21, r.getDeduccionMercanciaVes());
                 pstmt.addBatch();
             }
             pstmt.executeBatch();
@@ -114,8 +120,9 @@ public final class NominaRepository {
         String deleteSql = "DELETE FROM nominas WHERE periodoId = ?";
         String insertSql = "INSERT OR REPLACE INTO nominas (periodoId, cedula, nombreCompleto, salarioMensualUsd, tasaBcv, " +
                 "sueldoBasePeriodoUsd, sueldoBasePeriodoVes, cestaTicketVes, ivssVes, faovVes, netoVes, netoUsd, " +
-                "horasExtras, horasNocturnas, diasFeriados, bonosExtrasUsd, diasNoTrabajados, adelantoVes, adelantoUsd) " +
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                "horasExtras, horasNocturnas, diasFeriados, bonosExtrasUsd, diasNoTrabajados, adelantoVes, adelantoUsd, " +
+                "deduccionMercanciaUsd, deduccionMercanciaVes) " +
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
         try (Connection conn = DatabaseHelper.getConnection()) {
             conn.setAutoCommit(false);
@@ -144,6 +151,8 @@ public final class NominaRepository {
                     pstmt.setDouble(17, r.getDiasNoTrabajados());
                     pstmt.setDouble(18, r.getAdelantoVes());
                     pstmt.setDouble(19, r.getAdelantoUsd());
+                    pstmt.setDouble(20, r.getDeduccionMercanciaUsd());
+                    pstmt.setDouble(21, r.getDeduccionMercanciaVes());
                     pstmt.addBatch();
                 }
                 pstmt.executeBatch();
@@ -188,7 +197,9 @@ public final class NominaRepository {
                             rs.getDouble("bonosExtrasUsd"),
                             rs.getDouble("diasNoTrabajados"),
                             rs.getDouble("adelantoVes"),
-                            rs.getDouble("adelantoUsd")
+                            rs.getDouble("adelantoUsd"),
+                            rs.getDouble("deduccionMercanciaUsd"),
+                            rs.getDouble("deduccionMercanciaVes")
                     );
                     recibos.add(recibo);
                 }
@@ -246,7 +257,9 @@ public final class NominaRepository {
                         rs.getDouble("bonosExtrasUsd"),
                         rs.getDouble("diasNoTrabajados"),
                         rs.getDouble("adelantoVes"),
-                        rs.getDouble("adelantoUsd")
+                        rs.getDouble("adelantoUsd"),
+                        rs.getDouble("deduccionMercanciaUsd"),
+                        rs.getDouble("deduccionMercanciaVes")
                 );
                 todos.add(recibo);
             }

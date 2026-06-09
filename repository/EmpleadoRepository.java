@@ -160,23 +160,55 @@ public final class EmpleadoRepository {
         }
     }
 
-    public static void update(Empleado emp) {
-        String sql = "UPDATE empleados SET nombreCompleto = ?, cargo = ?, departamento = ?, salarioUsd = ?, tipoContrato = ?, estado = ?, fechaIngreso = ? WHERE cedula = ?";
-        try (Connection conn = DatabaseHelper.getConnection();
-             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+    public static void update(String oldCedula, Empleado emp) {
+        String sql = "UPDATE empleados SET cedula = ?, nombreCompleto = ?, cargo = ?, departamento = ?, salarioUsd = ?, tipoContrato = ?, estado = ?, fechaIngreso = ? WHERE cedula = ?";
+        try (Connection conn = DatabaseHelper.getConnection()) {
+            conn.setAutoCommit(false);
+            try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+                pstmt.setString(1, emp.getCedula());
+                pstmt.setString(2, emp.getNombreCompleto());
+                pstmt.setString(3, emp.getCargo());
+                pstmt.setString(4, emp.getDepartamento());
+                pstmt.setDouble(5, emp.getSalarioUsd());
+                pstmt.setString(6, emp.getTipoContrato());
+                pstmt.setString(7, emp.getEstado());
+                pstmt.setString(8, emp.getFechaIngreso());
+                pstmt.setString(9, oldCedula);
+                pstmt.executeUpdate();
+            }
 
-            pstmt.setString(1, emp.getNombreCompleto());
-            pstmt.setString(2, emp.getCargo());
-            pstmt.setString(3, emp.getDepartamento());
-            pstmt.setDouble(4, emp.getSalarioUsd());
-            pstmt.setString(5, emp.getTipoContrato());
-            pstmt.setString(6, emp.getEstado());
-            pstmt.setString(7, emp.getFechaIngreso());
-            pstmt.setString(8, emp.getCedula());
-            pstmt.executeUpdate();
+            if (!emp.getCedula().equalsIgnoreCase(oldCedula)) {
+                String updateNominas = "UPDATE nominas SET cedula = ? WHERE cedula = ?";
+                try (PreparedStatement pstmt = conn.prepareStatement(updateNominas)) {
+                    pstmt.setString(1, emp.getCedula());
+                    pstmt.setString(2, oldCedula);
+                    pstmt.executeUpdate();
+                }
 
-            empleados.removeIf(e -> e.getCedula().equalsIgnoreCase(emp.getCedula()));
+                String updateMercancia = "UPDATE facturas_mercancia SET cedulaEmpleado = ? WHERE cedulaEmpleado = ?";
+                try (PreparedStatement pstmt = conn.prepareStatement(updateMercancia)) {
+                    pstmt.setString(1, emp.getCedula());
+                    pstmt.setString(2, oldCedula);
+                    pstmt.executeUpdate();
+                }
+            } else {
+                String updateNominasName = "UPDATE nominas SET nombreCompleto = ? WHERE cedula = ?";
+                try (PreparedStatement pstmt = conn.prepareStatement(updateNominasName)) {
+                    pstmt.setString(1, emp.getNombreCompleto());
+                    pstmt.setString(2, oldCedula);
+                    pstmt.executeUpdate();
+                }
+            }
+
+            conn.commit();
+
+            empleados.removeIf(e -> e.getCedula().equalsIgnoreCase(oldCedula));
             empleados.add(emp);
+
+            // Reload caches
+            NominaRepository.load();
+            MercanciaRepository.load();
+
             notifyListeners();
         } catch (SQLException e) {
             System.err.println("Error actualizando empleado: " + e.getMessage());

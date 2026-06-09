@@ -70,6 +70,31 @@ public final class DatabaseHelper {
                     "valor TEXT" +
                     ")");
 
+            stmt.execute("CREATE TABLE IF NOT EXISTS facturas_mercancia (" +
+                    "id INTEGER PRIMARY KEY AUTOINCREMENT, " +
+                    "cedulaEmpleado TEXT, " +
+                    "numeroFactura TEXT, " +
+                    "montoTotal REAL, " +
+                    "montoAbonado REAL, " +
+                    "fechaEmision TEXT, " +
+                    "fechaVencimiento TEXT, " +
+                    "postergada INTEGER, " +
+                    "estado TEXT, " +
+                    "observaciones TEXT" +
+                    ")");
+
+            // Añadir columnas para deducción de mercancía si no existen
+            try {
+                stmt.execute("ALTER TABLE nominas ADD COLUMN deduccionMercanciaUsd REAL DEFAULT 0.0");
+            } catch (SQLException e) {
+                // Ya existe o no se pudo agregar
+            }
+            try {
+                stmt.execute("ALTER TABLE nominas ADD COLUMN deduccionMercanciaVes REAL DEFAULT 0.0");
+            } catch (SQLException e) {
+                // Ya existe o no se pudo agregar
+            }
+
         } catch (SQLException e) {
             System.err.println("Error al inicializar la base de datos: " + e.getMessage());
         }

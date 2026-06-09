@@ -54,6 +54,7 @@ public class Sidebar extends JPanel {
             new NavItemDef("\uD83C\uDFE0", "Inicio",        "inicio"),        // 🏠
             new NavItemDef("\uD83D\uDC65", "Empleados",     "empleados"),     // 👥
             new NavItemDef("\uD83D\uDCB0", "Nómina",        "nomina"),        // 💰
+            new NavItemDef("\uD83D\uDC8A", "Mercancía",     "mercancia"),     // 💊
             new NavItemDef("\uD83D\uDCC8", "Reportes",      "reportes"),      // 📈
             new NavItemDef("\u2699",       "Configuración", "configuracion"), // ⚙
     };
